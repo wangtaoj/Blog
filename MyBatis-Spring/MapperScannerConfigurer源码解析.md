@@ -492,7 +492,9 @@ private void processBeanDefinitions(Set<BeanDefinitionHolder> beanDefinitions) {
 
 ### 总结
 
-只要将源码跟下，基本就可以非常清楚MyBatis-Spring接口扫描的工作原理了。这里还是简单总结下思路吧。1. 1. **1. `MapperScannerConfigurer`是一个包扫描的配置类，其中`basePackage`属性是必需的，多个包时可以使用逗号隔开。`sqlSessionFactoryBeanName`、`sqlSessionTemplateBeanName`二选一即可。如果都选了那么根据`sqlSessionFactoryBeanName`引用的`SqlSessionFactory`创建的`SqlSession`会被覆盖掉。如果两个都没配置，将会根据类型自动装配，这种方式适合应用程序中只有一个`SqlSessionFactory`或者`SqlSessionTemplat`的bean存在。其它配置就不总结了。**
+只要将源码跟下，基本就可以非常清楚MyBatis-Spring接口扫描的工作原理了。这里还是简单总结下思路吧。
+
+**1. `MapperScannerConfigurer`是一个包扫描的配置类，其中`basePackage`属性是必需的，多个包时可以使用逗号隔开。`sqlSessionFactoryBeanName`、`sqlSessionTemplateBeanName`二选一即可。如果都选了那么根据`sqlSessionFactoryBeanName`引用的`SqlSessionFactory`创建的`SqlSession`会被覆盖掉。如果两个都没配置，将会根据类型自动装配，这种方式适合应用程序中只有一个`SqlSessionFactory`或者`SqlSessionTemplat`的bean存在。其它配置就不总结了。**
 
 **2.  具体实现扫描以及注册接口的功能被委托给`ClassPathMapperScanner`类了。具体做法就是将Spring扫描接口后生成的`BeanDefinition`修改成一个表示`MapperFactoryBean`的`BeanDefinition`，而`MapperFactoryBean`是一个实现`FactoryBean`的特殊bean，相当于返回Mapper接口实例的工厂。具体返回接口实例的原理是MyBatis本身的接口绑定功能，底层其实是动态代理。**
 
