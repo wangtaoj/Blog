@@ -12,8 +12,7 @@
 
 * Lock接口可以绑定多个条件，即绑定多个 Condition 对象，这样唤醒时可以唤醒指定条件上的线程。如生产者消费者例子，使用 synchronized 关键字时，当生产者生产消息时，需要唤醒消费者线程，我们只能调用notifyAll 方法，这样不仅会唤醒消费者端的线程而且还会唤醒生产者自己这一端的线程。
 
-**注： **
-
+**注：**
 1. 公平锁是指多个线程等待同一个锁时，必须按照申请锁的时间顺序来依次获得锁，而非公平锁不保证这一点。在锁被释放时，任何一个等待锁的线程都有机会获取锁。
 2. ReentrantLock实现的非公平锁只能保证阻塞队列里最早等待的线程与新来的线程竞争抢锁, 对于阻塞队列其它的线程依然需要等待，因为队列是先进先出的，只有该线程获取锁然后释放锁后后续节点才有资格竞争锁。
 
@@ -33,16 +32,16 @@ public interface Lock {
     // 尝试获取锁，不管成功与否都返回
     boolean tryLock();
     
-    // 超时获取锁，获取锁失败而返回的原因如下：
-    // 1. 重新竞争到锁
-    // 2. 超时时间过了
+    // 超时获取锁，此方法返回的情况如下：
+    // 1. 在给定时间内竞争到锁, 返回true
+    // 2. 超时时间过了, 返回false
     // 3. 线程被中断，抛出中断异常，清除中断状态
     boolean tryLock(long time, TimeUnit unit) throws InterruptedException;
     
     // 释放锁，如果当前线程没有获取到锁，调用此方法将会抛出IllegalMonitorStateException
     void unlock();
     
-    // 创建Condition对象，提供了类似synchronized 所对象的wait, notify， notifyAll方法
+    // 创建Condition对象，提供了类似synchronized 锁对象的wait, notify， notifyAll方法
     Condition newCondition();
 }
 
