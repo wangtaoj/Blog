@@ -57,9 +57,7 @@ org.springframework.boot.autoconfigure.batch.BatchAutoConfiguration,\
 ```
 
 ### 源码分析
-
 所有的`@EnableXXX`注解行为都是由`@Import`注解来完成的，`@EnableAutoConfiguration`注解同样也被`Import`注解注解了。重点关注`AutoConfigurationImportSelector`即可。这个类实现了`DeferredImportSelector`接口。也就是在主配置类全部解析完成后再执行`selectImports`方法选择哪些类继续进行解析。也就是说主配置类定义的bean优先注册，然后再注册`selectImports`选择的类，保证了用户的配置优先。
-
 注: 主配置定义的bean包括主配置本身以及通过`@import`注解引入的bean以及注解扫描注册的bean。
 
 ```java
