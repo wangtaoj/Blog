@@ -79,12 +79,12 @@ seata server即seata术语中的TC(事务协调者)，用于维护全局和分�
      registry:
        # support: nacos, eureka, redis, zk, consul, etcd3, sofa
        type: nacos
-         nacos:
-           application: seata-server
-           server-addr: 127.0.0.1:8848
-           group: SEATA_GROUP
-           namespace: c7123a1e-d438-412c-af72-cdf3ab18a547
-           cluster: default
+       nacos:
+         application: seata-server
+         server-addr: 127.0.0.1:8848
+         group: SEATA_GROUP
+         namespace: c7123a1e-d438-412c-af72-cdf3ab18a547
+         cluster: default
    ```
    
 4. 修改配置中心config.type为nacos
@@ -238,8 +238,238 @@ seata server即seata术语中的TC(事务协调者)，用于维护全局和分�
    sh seata-server.sh -h 192.168.2.102 -p 8091
    ```
 
-
 ​       启动日志在seata安装目录/logs下
+
+### seata server docker部署
+
+[官方文档](https://seata.io/zh-cn/docs/ops/deploy-by-docker-compose.html)
+
+使用docker部署和手动部署没啥区别
+
+1. 下载镜像
+
+   ```bash
+   docker pull seataio/seata-server:1.6.1
+   ```
+
+2. 获取启动的默认配置文件，用于修改，启动一个临时的容器
+
+   ```bash
+   # 启动临时容器
+   docker run --name seata-server -p 8091:8091 -p 7091:7091 seataio/seata-server:1.6.1
+   # 拷贝默认配置文件(将resources目录拷贝到宿主机指定目录下)
+   docker cp seata-server:/seata-server/resources /Users/wangtao/Developer/docker-compose/seata-1.6.1
+   # 删除临时容器(先停止)
+   docker rm seata-server
+   ```
+
+3. 修改resources目录下的application.yml文件（同手动部署）
+
+   主要注意下nacos的ip以及namespace，store.mode=db。docker容器内可以直接根据宿主机的ip来访问宿主机的应用。
+
+   宿主机无网络环境下可通过虚拟域名形式访问`host.docker.internal`
+
+   ```yaml
+   server:
+     port: 7091
+   
+   spring:
+     application:
+       name: seata-server
+   
+   logging:
+     config: classpath:logback-spring.xml
+     file:
+       path: ${user.home}/logs/seata
+     extend:
+       logstash-appender:
+         destination: 127.0.0.1:4560
+       kafka-appender:
+         bootstrap-servers: 127.0.0.1:9092
+         topic: logback_to_logstash
+   
+   console:
+     user:
+       username: seata
+       password: seata
+   
+   seata:
+     config:
+       # support: nacos, consul, apollo, zk, etcd3
+       type: nacos
+       nacos:
+         server-addr: 192.168.2.102:8848
+         namespace: 1a309f28-39f8-4229-97ee-5bbdd446c3f4
+         group: SEATA_GROUP
+         data-id: seata.properties
+     registry:
+       # support: nacos, eureka, redis, zk, consul, etcd3, sofa
+       type: nacos
+       nacos:
+         application: seata-server
+         server-addr: 192.168.2.102:8848
+         group: SEATA_GROUP
+         namespace: 1a309f28-39f8-4229-97ee-5bbdd446c3f4
+         cluster: default
+     store:
+       # support: file 、 db 、 redis
+       mode: db
+   #  server:
+   #    service-port: 8091 #If not configured, the default is '${server.port} + 1000'
+     security:
+       secretKey: SeataSecretKey0c382ef121d778043159209298fd40bf3850a017
+       tokenValidityInMilliseconds: 1800000
+       ignore:
+         urls: /,/**/*.css,/**/*.js,/**/*.html,/**/*.map,/**/*.svg,/**/*.png,/**/*.ico,/console-fe/public/**,/api/v1/auth/login
+   ```
+
+4. 同步配置到nacos配置中心，namespace、group、dataId得一致
+
+   主要修改store.db相关内容
+
+   ```properties
+   #For details about configuration items, see https://seata.io/zh-cn/docs/user/configurations.html
+   #Transport configuration, for client and server
+   transport.type=TCP
+   transport.server=NIO
+   transport.heartbeat=true
+   transport.enableTmClientBatchSendRequest=false
+   transport.enableRmClientBatchSendRequest=true
+   transport.enableTcServerBatchSendResponse=false
+   transport.rpcRmRequestTimeout=30000
+   transport.rpcTmRequestTimeout=30000
+   transport.rpcTcRequestTimeout=30000
+   transport.threadFactory.bossThreadPrefix=NettyBoss
+   transport.threadFactory.workerThreadPrefix=NettyServerNIOWorker
+   transport.threadFactory.serverExecutorThreadPrefix=NettyServerBizHandler
+   transport.threadFactory.shareBossWorker=false
+   transport.threadFactory.clientSelectorThreadPrefix=NettyClientSelector
+   transport.threadFactory.clientSelectorThreadSize=1
+   transport.threadFactory.clientWorkerThreadPrefix=NettyClientWorkerThread
+   transport.threadFactory.bossThreadSize=1
+   transport.threadFactory.workerThreadSize=default
+   transport.shutdown.wait=3
+   transport.serialization=seata
+   transport.compressor=none
+   
+   #Transaction routing rules configuration, only for the client
+   service.vgroupMapping.default_tx_group=default
+   
+   service.enableDegrade=false
+   service.disableGlobalTransaction=false
+   
+   #Transaction rule configuration, only for the client
+   client.rm.asyncCommitBufferLimit=10000
+   client.rm.lock.retryInterval=10
+   client.rm.lock.retryTimes=30
+   client.rm.lock.retryPolicyBranchRollbackOnConflict=true
+   client.rm.reportRetryCount=5
+   client.rm.tableMetaCheckEnable=true
+   client.rm.tableMetaCheckerInterval=60000
+   client.rm.sqlParserType=druid
+   client.rm.reportSuccessEnable=false
+   client.rm.sagaBranchRegisterEnable=false
+   client.rm.sagaJsonParser=fastjson
+   client.rm.tccActionInterceptorOrder=-2147482648
+   client.tm.commitRetryCount=5
+   client.tm.rollbackRetryCount=5
+   client.tm.defaultGlobalTransactionTimeout=60000
+   client.tm.degradeCheck=false
+   client.tm.degradeCheckAllowTimes=10
+   client.tm.degradeCheckPeriod=2000
+   client.tm.interceptorOrder=-2147482648
+   client.undo.dataValidation=true
+   client.undo.logSerialization=jackson
+   client.undo.onlyCareUpdateColumns=true
+   server.undo.logSaveDays=7
+   server.undo.logDeletePeriod=86400000
+   client.undo.logTable=undo_log
+   client.undo.compress.enable=true
+   client.undo.compress.type=zip
+   client.undo.compress.threshold=64k
+   #For TCC transaction mode
+   tcc.fence.logTableName=tcc_fence_log
+   tcc.fence.cleanPeriod=1h
+   
+   #Log rule configuration, for client and server
+   log.exceptionRate=100
+   
+   #Transaction storage configuration, only for the server. The file, db, and redis configuration values are optional.
+   store.mode=db
+   #Used for password encryption
+   #store.publicKey=
+   
+   #These configurations are required if the `store mode` is `db`. If `store.mode,store.lock.mode,store.session.mode` are not equal to `db`, you can remove the configuration block.
+   store.db.datasource=druid
+   store.db.dbType=mysql
+   store.db.driverClassName=com.mysql.cj.jdbc.Driver
+   store.db.url=jdbc:mysql://192.168.2.102:3306/seatadb?rewriteBatchedStatements=true&serverTimezone=Asia/Shanghai
+   store.db.user=root
+   store.db.password=123456
+   store.db.minConn=5
+   store.db.maxConn=30
+   store.db.globalTable=global_table
+   store.db.branchTable=branch_table
+   store.db.distributedLockTable=distributed_lock
+   store.db.queryLimit=100
+   store.db.lockTable=lock_table
+   store.db.maxWait=5000
+   
+   #Transaction rule configuration, only for the server
+   server.recovery.committingRetryPeriod=1000
+   server.recovery.asynCommittingRetryPeriod=1000
+   server.recovery.rollbackingRetryPeriod=1000
+   server.recovery.timeoutRetryPeriod=1000
+   server.maxCommitRetryTimeout=-1
+   server.maxRollbackRetryTimeout=-1
+   server.rollbackRetryTimeoutUnlockEnable=false
+   server.distributedLockExpireTime=10000
+   server.xaerNotaRetryTimeout=60000
+   server.session.branchAsyncQueueSize=5000
+   server.session.enableBranchAsyncRemove=false
+   server.enableParallelRequestHandle=false
+   
+   #Metrics configuration, only for the server
+   metrics.enabled=false
+   metrics.registryType=compact
+   metrics.exporterList=prometheus
+   metrics.exporterPrometheusPort=9898
+   ```
+
+5. 建表(与手工部署一致)
+
+6. docker command or docker-compose.yml
+
+   ```bash
+   docker run -d --name seata-server \
+           -p 8091:8091 \
+           -p 7091:7091 \
+           -e SEATA_IP=192.168.2.102 \
+           -e EATA_PORT=8091 \
+           -e STORE_MODE=db \
+           -v /Users/wangtao/Developer/docker-compose/seata-1.6.1/resources:/seata-server/resources  \
+           seataio/seata-server:1.6.1
+   ```
+
+   ```yaml
+   services:
+     seata-server:
+       image: seataio/seata-server:1.6.1
+       container_name: seata-server
+       ports:
+         - "7091:7091"
+         - "8091:8091"
+       environment:
+         # 可不用, 会从配置中心读取, 加上这个万一配置中心配置有问题加载不到配置时会报错可提前发现问题
+         - STORE_MODE=db
+         # 以SEATA_IP作为host注册到注册中心，使用宿主机ip
+         - SEATA_IP=192.168.2.102
+         - SEATA_PORT=8091
+       volumes:
+         - ./resources:/seata-server/resources
+   ```
+
+   
 
 ### 客户端整合
 
