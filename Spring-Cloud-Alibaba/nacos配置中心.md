@@ -184,3 +184,7 @@ Spring Cloud Alibaba Nacos Config 目前提供了三种配置能力从 Nacos 拉
 - C: 通过内部相关规则(应用名、应用名+ Profile )自动生成相关的 Data Id 配置
 
 当三种方式共同使用时，他们的一个优先级关系是:A < B < C
+
+综合spring cloud应用时，几个配置优先级如下bootstrap.yml < application.ym < A < B < C
+
+但是bootstrap.yml文件是最先加载的，用于应用程序引导，更加早期的配置属性读取，如配置中心相关属性。
