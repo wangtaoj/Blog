@@ -4,7 +4,7 @@
 
 由于官方没有构建arm64架构的docker镜像，只好自己构建了，下面是详细步骤。
 
-1. 下载源码进行构建，[下载地址][https://github.com/xuxueli/xxl-job/releases]
+1. 下载源码进行构建，[下载地址](https://github.com/xuxueli/xxl-job/releases)
 
 2. 构建jar包，进入xxl-job-admin模块根目录
 
