@@ -341,3 +341,4 @@ public PropertySource<?> locate(Environment env) {
 }
 ```
 
+**因为加载配置中心逻辑是在应用程序中的`ApplicationContextInitializer`执行，因此加载时机晚于应用程序的`applicaiton.yml`，但是优先级却是高于应用程序的`application.yml`，因为加载完后将`PropertySource`置于`Environment`实例中的`PropertySources`最前面。
