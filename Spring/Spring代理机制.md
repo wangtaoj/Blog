@@ -247,7 +247,7 @@ Spring增强Bean通常都是通过`BeanPostProcessor`来实现的，也就是说
 
 其中`AnnotationAwareAspectJAutoProxyCreator`几乎拥有`InfrastructureAdvisorAutoProxyCreator`所有的功能，除此之外，还扩展了AspectJ的一些注解，如`@Aspect`、`@PointCut`、`@Before`、`@After`、`@Around`等，会对这些注解注解的类进行代理增强。
 
-**其中`@EnableAspectJAutoProxy`就是会自动注册`AnnotationAwareAspectJAutoProxyCreator`到容器中，用于支持Spring AOP注解切面编程。而`@EnableTransactionManagement`、`@EnableCaching`会自动注册`InfrastructureAdvisorAutoProxyCreator`用于增强方法逻辑。
+**`@EnableAspectJAutoProxy`就是会自动注册`AnnotationAwareAspectJAutoProxyCreator`到容器中，用于支持Spring AOP注解切面编程。而`@EnableTransactionManagement`、`@EnableCaching`会自动注册`InfrastructureAdvisorAutoProxyCreator`用于增强方法逻辑。**
 
 **`AnnotationAwareAspectJAutoProxyCreator`和`InfrastructureAdvisorAutoProxyCreator`自动注册时在容器中只能存在一个，并且`AnnotationAwareAspectJAutoProxyCreator`优先级更高，因为它的功能更全。**
 
