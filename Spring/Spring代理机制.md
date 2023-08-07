@@ -225,9 +225,20 @@ public interface PointcutAdvisor extends Advisor {
 }
 ```
 
+#### 创建代理的BeanPostProcessor
+
+Spring增强Bean通常都是通过`BeanPostProcessor`来实现的，也就是说创建代理的入口就是在这里，简要的继承体系如下图所示。
+![](imgs/img20230807194715221.png)
+
+主要分为两大派系
+- AbstractAutoProxyCreator，会**自动从容器**寻找符合条件的`Advise`或`Advisor`，可能存在**多个**。
+- AbstractAdvisingBeanPostProcessor，需要自己指定，内部持有**一个**`Advisor`变量。
+
+`ProxyConfig`是对创建代理的一些配置，如上文提到的`proxyTargetClass`、`exposeProxy`等。
+
 #### AbstractAutoProxyCreator基类
 
-该类是一个`BeanPostProcessor`，也就是为Spring容器中的Bean**自动创建代理**的入口。下面是它的一个继承体系图。
+该类是一个抽象基类，有好几个常用的子类实现，下面是它的一个继承体系图。
 ![](imgs/img20230805110125622.png)
 目前Spring用到的实现类主要是下面这两个。
 
@@ -236,15 +247,20 @@ public interface PointcutAdvisor extends Advisor {
 
 其中`AnnotationAwareAspectJAutoProxyCreator`几乎拥有`InfrastructureAdvisorAutoProxyCreator`所有的功能，除此之外，还扩展了AspectJ的一些注解，如`@Aspect`、`@PointCut`、`@Before`、`@After`、`@Around`等，会对这些注解注解的类进行代理增强。
 
-**其中`@EnableAspectJAutoProxy`就是会自动注册`AnnotationAwareAspectJAutoProxyCreator`到容器中，用于支持Spring AOP注解切面编程。而`@EnableTransactionManagement`、`@EnableCaching`会自动注册`InfrastructureAdvisorAutoProxyCreator`用于增强方法逻辑。`@EnableAsync`则干脆自己注册了一个别的`BeanPostProcessor`来创建代理，因为Spring可能并不想异步任务bean也能循环依赖。**
+**其中`@EnableAspectJAutoProxy`就是会自动注册`AnnotationAwareAspectJAutoProxyCreator`到容器中，用于支持Spring AOP注解切面编程。而`@EnableTransactionManagement`、`@EnableCaching`会自动注册`InfrastructureAdvisorAutoProxyCreator`用于增强方法逻辑。
 
 **`AnnotationAwareAspectJAutoProxyCreator`和`InfrastructureAdvisorAutoProxyCreator`自动注册时在容器中只能存在一个，并且`AnnotationAwareAspectJAutoProxyCreator`优先级更高，因为它的功能更全。**
 
 **`AbstractAutoProxyCreator`封装了创建代理的逻辑，寻找`Advisor`的逻辑则交给子类来实现，比如从容器获取所有的`Advisor`，然后利用`Advisor`中的`PointCut`来和当前bean去匹配，挑出所有的符合的`Advisor`后，进行代理创建。**
 
+#### AbstractAdvisingBeanPostProcessor基类
+
+该类实现需要自己指定一个Advisor，而不会去容器中寻找，同时它没有实现`SmartInstantiationAwareBeanPostProcessor`接口，也就意味着**不支持循环依赖**。
+`@EnableAsync`则是注册了一个`AsyncAnnotationBeanPostProcessor`用来创建代理，它便是`AbstractAdvisingBeanPostProcessor`的一个子类实现。异步任务使用它来实现可能是Spring团队不想异步任务bean也能循环依赖吧。
+
 #### ProxyFactory类
 
-该类就是用于创建代理，`AbstractAutoProxyCreator内部就是使用它来创建代理的`。由于创建代理分为JDK动态代理和CGLIB，于是便又有了`AopProxy`，它有的子类实现`JdkDynamicAopProxy`、`ObjenesisCglibAopProxy`。
+该类就是用于创建代理，`AbstractAutoProxyCreator`或者`AbstractAdvisingBeanPostProcessor`内部就是使用它来创建代理的。由于创建代理分为JDK动态代理和CGLIB，于是便又有了`AopProxy`，它子类实现有`JdkDynamicAopProxy`、`ObjenesisCglibAopProxy`。
 
 ```java
 public class ProxyFactory extends ProxyCreatorSupport {
