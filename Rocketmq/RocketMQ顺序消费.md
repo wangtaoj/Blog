@@ -8,9 +8,9 @@ RocketMQ的topic可以有多个逻辑队列，在集群模式(MessageModel.CLUST
 
 在RocketMQ中，顺序消费消息需要生产者和消费者互相合作才行。
 - 生产者把需要顺序消费的消息发送到同一个逻辑队列，因为队列先进先出呀。如果发送到不同的逻辑队列，消费者是无法保证顺序消费的。
-- 消费者从该逻辑队列消费消息时，依次取消息顺序消费即可。消费者内部是有一个线程池的，用于消费消息，顺序模式下，**只会有一个线程去消费同一个逻辑队列，这样可以保证顺序，同时避免线程间的锁竞争，浪费资源，如果有多个线程去消费，简单加锁无法控制哪个线程先执行哪个线程后执行来保证顺序消费。**
+- 消费者从该逻辑队列消费消息时，依次取消息顺序消费即可。**同一个逻辑队列拉取到的消息都会放到`ProcessQueue`对象里`TreeMap`中，key为消息在逻辑队列中的下标(位点)，即下标越小，说明越先被发送到逻辑队列中，越先被消费**。消费者内部是有一个线程池的，用于消费消息，顺序模式下，**RocketMQ尽可能的只会有一个线程去消费同一个逻辑队列，这样可以避免线程之间无谓的锁竞争，浪费资源，毕竟对于同一个逻辑队列，启再多的线程，也只能被正在消费的线程阻塞住(加锁)，何不如让这些线程去消费别的逻辑队列呢。**
 
-**注：若消息消费失败，后面的消息不会被消息，因为要保证顺序消费，直到当前消息重试成功或者超过最大重试次数后进入到死信队列后才会消费后续的消息。**
+**注：若消息消费失败，后面的消息不会被消费，因为要保证顺序消费，直到当前消息重试成功或者超过最大重试次数后进入到死信队列后才会消费后续的消息。**
 
 ### 源码解析
 
@@ -35,7 +35,7 @@ public interface ConsumeMessageService {
 
 这里重点说下参数`dispathToConsume`的作用
 - 并发消费模式，该参数无意义
-- 顺序消费模式，用于控制同一个逻辑队列只会由一个线程消费的关键参数，值为true时，才会提交任务给消费线程池。消费者拉取到消息列表后，先会把消息列表添加到`processQueue`对象中的`TreeMap`(顺序消费肯定是有序Map)中，然后返回个`boolean`值给`dispathToConsume`，会判断当前逻辑队列是否正在被消费，如果正在被消费，则返回false，不用往线程中添加一个任务，因为已经有线程在处理了。否则返回true，往线程池添加一个任务，等待线程池中的线程来消费。
+- 顺序消费模式，用于控制同一个逻辑队列尽可能的由一个线程消费的关键参数，值为true时，才会提交任务给消费线程池。消费者拉取到消息列表后，先会把消息列表添加到`processQueue`对象中的`TreeMap`(顺序消费肯定是有序Map)中，然后返回个`boolean`值给`dispathToConsume`，会判断当前逻辑队列是否正在被消费，如果正在被消费，则返回false，不用往线程中添加一个任务，因为已经有线程在处理了。否则返回true，往线程池添加一个任务，等待线程池中的线程来消费。
 
 具体逻辑来看源码，首先入口在消费者拉取消息的方法中
 #### 拉取消息 & 添加消费任务到消费线程池
@@ -132,7 +132,7 @@ public boolean putMessage(final List<MessageExt> msgs) {
             msgCount.addAndGet(validMsgCnt);
 
             /*
-             * consuming: 初始化时为false, 消费完了之后将消息删除后msgTreeMap没有消息了也会设置成false
+             * consuming: 初始化时为false, 消费线程在获取消息时将消息删除后msgTreeMap没有消息了也会设置成false
              * 存在消息，并且没有线程正在消费该逻辑队列，说明需要添加任务到线程池中，由一个新的线程来消费消息
              * 否则，由正在消费的线程来消费新加入的消息
              */
@@ -160,6 +160,47 @@ public boolean putMessage(final List<MessageExt> msgs) {
 
     return dispatchToConsume;
 }
+```
+
+再看`ProcessQueue`类的`takeMessages`方法，该方法会在消费线程中调用，用于获取消息来消费。
+
+```java
+public List<MessageExt> takeMessages(final int batchSize) {
+    List<MessageExt> result = new ArrayList<MessageExt>(batchSize);
+    final long now = System.currentTimeMillis();
+    try {
+        this.treeMapLock.writeLock().lockInterruptibly();
+        this.lastConsumeTimestamp = now;
+        try {
+            if (!this.msgTreeMap.isEmpty()) {
+                // 取一批消息进行消费
+                for (int i = 0; i < batchSize; i++) {
+                    // 获取最小位点的消息，刚方法同时会从Map中删除元素
+                    Map.Entry<Long, MessageExt> entry = this.msgTreeMap.pollFirstEntry();
+                    if (entry != null) {
+                        result.add(entry.getValue());
+                        // 放到临时Map中，重试时将里面的消息再度放到msgTreeMap
+                        consumingMsgOrderlyTreeMap.put(entry.getKey(), entry.getValue());
+                    } else {
+                        break;
+                    }
+                }
+            }
+
+            if (result.isEmpty()) {
+                // 没有积压元素了，置为false
+                consuming = false;
+            }
+        } finally {
+            this.treeMapLock.writeLock().unlock();
+        }
+    } catch (InterruptedException e) {
+        log.error("take Messages exception", e);
+    }
+
+    return result;
+}
+
 ```
 
 再看`ConsumeMessageOrderlyService`类(顺序消费的实现类)中的`submitConsumeRequest`方法。
@@ -192,9 +233,9 @@ public void run() {
     }
 
     /* 
-     * 根据逻辑队列加消费全局锁，经过前面分析，正常情况下是不会有别的线程来竞争锁的
-     * 特殊情况: 本线程已经将processQueue中积压的消息全部消费完了，此时拉取线程刚好拉取到消息，那么会提交消费任务到
-     *          线程池中，最坏情况下可能会有两个线程来消费线程，因此需要加一个全局锁的
+     * 根据逻辑队列加消费全局锁，经过前面分析，RocketMQ会尽量保证不会有别的线程来竞争锁的
+     * 特殊情况: 本线程已经将processQueue中积压的消息全部拿完了(takeMessages拿消息同时还会删除)，
+     * 此时拉取线程刚好拉取到消息，那么会提交消费任务到线程池中，因此需要加一个全局锁的
      */
     final Object objLock = messageQueueLock.fetchLockObject(this.messageQueue);
     synchronized (objLock) {
