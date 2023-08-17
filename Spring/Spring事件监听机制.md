@@ -63,6 +63,33 @@ public class QuotaIstrnDataStsListener implements ApplicationListener<IstrnDataS
 }
 ```
 
+或者使用`@EventListener`注解方式
+
+```java
+@Slf4j
+@Component
+public class IstrnDataStsListener {
+
+    /**
+     * 通过方法参数来决定监听哪个事件
+     * 方法参数个数只能是0或者1
+     */
+    @EventListener
+    public void handlePostion(IstrnDataStsEvent event) {
+        log.info("position exec logic, dataSts: {}", event.getDataSts());
+    }
+
+    /**
+     * 通过注解中的classes参数来决定监听哪个事件
+     * 使用此方式，如果方法里不需要获取参数时, 可以使用无参方法
+     */
+    @EventListener(classes = {IstrnDataStsEvent.class})
+    public void handleQuota() {
+        log.info("=========handleQuota========");
+    }
+}
+```
+
 第三步，发布该事件
 
 ```java
