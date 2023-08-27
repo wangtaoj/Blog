@@ -26,6 +26,36 @@ public void simple() {
 }
 ```
 
+#### 访问静态成员
+
+使用T(完全限定名)形式可访问类，如T(java.lang.String)。
+
+```java
+public static class Util {
+    public static final String NAME = "hello";
+
+    public static String get() {
+        return "world";
+    }
+}
+
+@Test
+public void accessStaticMemberOfClass() {
+    ExpressionParser expressionParser = new SpelExpressionParser();
+    // T(完全限定名)访问类
+    Expression expression = expressionParser.parseExpression("T(com.wangtao.springboottest.SpelTest.Util)");
+    Assert.assertEquals(Util.class, expression.getValue());
+
+    // 静态变量
+    expression = expressionParser.parseExpression("T(com.wangtao.springboottest.SpelTest.Util).NAME");
+    Assert.assertEquals("hello", expression.getValue());
+
+    // 静态方法
+    expression = expressionParser.parseExpression("T(com.wangtao.springboottest.SpelTest.Util).get()");
+    Assert.assertEquals("world", expression.getValue());
+}
+```
+
 #### 访问根对象
 
 **注意，若访问根对象中一个不存在的属性，会抛异常。**
@@ -124,6 +154,58 @@ public void accessSpringBean() {
 
 注: 如果bean是一个`FactoryBean`，需要访问这个FactoryBean本身，则使用&符合即可。
 
+#### 模板表达式
+
+在`@Value`注解中可以使用`@Value(#{name})`这种语法来给字段赋值，这其实用到了模板表达式，默认情况下，解析器会把给定的字符串都当做SpEL表达式来解析，而使用了模板之后，只会把模板部分当做SpEL表达式，其他部分只是一个普通字符串，原样返回。
+
+要使用模板表达式，解析时需要使用以下方法。
+
+```java
+/**
+ * @param expressionString 表达式字符串
+ * @param context 解析上下文，指定模板前后缀
+ */
+Expression parseExpression(String expressionString, ParserContext context)
+    throws ParseException;
+```
+
+一个通过子类实现为`TemplateParserContext`，可以自定义前后缀，默认为#{}。
+
+使用例子如下
+
+```java
+@Test
+public void template() {
+    ExpressionParser expressionParser = new SpelExpressionParser();
+    // 创建上下文
+    StandardEvaluationContext evaluationContext = new StandardEvaluationContext();
+    // 设置root变量
+    evaluationContext.setRootObject(new SpelObj("lisi", 20));
+    // 添加自定义变量（非root变量）
+    evaluationContext.setVariable("name", "zhangsan");
+    evaluationContext.setVariable("age", 24);
+
+    // 取字面量(非模板部分字符串无需再加引号)
+    Expression expression = expressionParser.parseExpression("hello #{'world'}", new TemplateParserContext());
+    String result = expression.getValue(evaluationContext, String.class);
+    Assert.assertEquals("hello world", result);
+
+    // 取根对象属性
+    expression = expressionParser.parseExpression("hello #{name}", new TemplateParserContext());
+    result = expression.getValue(evaluationContext, String.class);
+    Assert.assertEquals("hello lisi", result);
+
+    // 取自定义变量属性
+    expression = expressionParser.parseExpression("hello #{#name}", new TemplateParserContext());
+    result = expression.getValue(evaluationContext, String.class);
+    Assert.assertEquals("hello zhangsan", result);
+
+    // 非模板部分字符串原样返回
+    expression = expressionParser.parseExpression("#age #{#age}", new TemplateParserContext());
+    result = expression.getValue(evaluationContext, String.class);
+    Assert.assertEquals("#age 24", result);
+}
+```
 ### MethodBasedEvaluationContext上下文对象
 
 `MethodBasedEvaluationContext`是`StandardEvaluationContext`的一个子类。它主要是把方法参数也加到了变量中，使得用户可以直接通过#+参数名来获取值。常常用于解析注解中的SpEL表达式。如Cache模块中`@Cacheable`注解中的key属性就支持SpEL表达式。
