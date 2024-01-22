@@ -1,4 +1,4 @@
-> canal-1.1.6
+> canal-1.1.7
 
 ### 简介
 
@@ -45,21 +45,19 @@ FLUSH PRIVILEGES;
 
 1. docker-compose.yml
 
-   官方发布的镜像只有amd64架构，macos m2芯片是arm64架构的，因此没有使用官方镜像
-
    ```yaml
    services:
      canal-server:
-       image: chinayin/canal:1.1.6
+       image: canal/canal-server:v1.1.7
        container_name: canal-server
        ports:
          - "11111:11111"
        volumes:
-         - ./conf/example:/app/server/conf/example
-         - ./conf/canal.properties:/app/server/conf/canal.properties
-         - ./logs:/app/server/logs
+         - ./conf/example:/home/admin/canal-server/conf/example
+         - ./conf/canal.properties:/home/admin/canal-server/conf/canal.properties
+         - ./logs:/home/admin/canal-server/logs
    ```
-
+   
 2. 修改配置文件conf/example/instance.properties
 
    ```properties
@@ -68,7 +66,7 @@ FLUSH PRIVILEGES;
    # 拥有MySQL slave权限的用户
    canal.instance.dbUsername=canal
    canal.instance.dbPassword=canal
-   # 监听canaldb数据库的所有表
+   # 监听canaldb数据库的所有表, 多个规则用逗号分割
    canal.instance.filter.regex=canaldb\\..*
    
    # 投递bin log消息到MQ的主题名称
@@ -107,13 +105,13 @@ FLUSH PRIVILEGES;
    <dependency>
      <groupId>com.alibaba.otter</groupId>
      <artifactId>canal.client</artifactId>
-     <version>1.1.6</version>
+     <version>1.1.7</version>
    </dependency>
    
    <dependency>
      <groupId>com.alibaba.otter</groupId>
      <artifactId>canal.protocol</artifactId>
-     <version>1.1.6</version>
+     <version>1.1.7</version>
    </dependency>
    ```
 
