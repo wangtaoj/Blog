@@ -155,7 +155,7 @@ public void test() {
 * `@RibbonClients`注解`defaultConfiguration`属性指定的配置，**注意默认配置会被注册到每一个子容器中**。
 * `SpringClientFactory`指定的全局配置`RibbonClientConfiguration`，**也会被注册到每一个子容器中**。
 
-**注意：NamedContextFactory创建的容器是允许bean覆盖的，需要小心beanName重复。 **
+**注意：NamedContextFactory创建的容器是允许bean覆盖的，需要小心beanName重复。**
 
 ```java
 public class DefaultRibbonConfig {
