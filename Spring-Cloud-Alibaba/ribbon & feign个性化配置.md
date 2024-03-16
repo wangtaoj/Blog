@@ -56,6 +56,8 @@ public class RibbonController {
 
 下面就来实现这么一个需求，调用nacos-producer服务中的方法使用随机策略，其它服务中的方法使用轮询策略，特指RoundRobinRule。
 
+第一种配置方式
+
 ```java
 @Configuration
 public class RibbonGlobalConfig {
@@ -144,6 +146,66 @@ public void test() {
         child.refresh();
  }
 ```
+
+第二种配置方式
+
+上述的配置是把全局的配置文件注入到应用容器中，`@RibbonClients`注解也提供了一个`defaultConfiguration`属性，可以注册默认配置到子容器中，子容器中配置注册顺序如下(参考`NamedContextFactory`类的`createContext`方法)
+
+* `@RibbonClient`注解`configuration`属性指定的配置，为子容器特有的配置。
+* `@RibbonClients`注解`defaultConfiguration`属性指定的配置，**注意默认配置会被注册到每一个子容器中**。
+* `SpringClientFactory`指定的全局配置`RibbonClientConfiguration`，**也会被注册到每一个子容器中**。
+
+**注意：NamedContextFactory创建的容器是允许bean覆盖的，需要小心beanName重复。 **
+
+```java
+public class DefaultRibbonConfig {
+
+    /**
+     * 随机策略
+     * 默认的，容器没有才生效
+     */
+    @ConditionalOnMissingBean
+    @Bean
+    public IRule randomRule() {
+        return new RandomRule();
+    }
+}
+```
+
+```java
+public class RibbonNacosProducerConfig {
+
+    /**
+     * 线性轮询策略
+     * 不再需要@Primary注解
+     */
+    @Bean
+    public IRule roundRobinRule() {
+        return new RoundRobinRule();
+    }
+}
+```
+
+```java
+@RibbonClients(
+        value = {@RibbonClient(value = "nacos-producer", configuration = RibbonNacosProducerConfig.class)},
+        defaultConfiguration = DefaultRibbonConfig.class
+)
+@EnableDiscoveryClient
+@SpringBootApplication
+public class RibbonExampleApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(RibbonExampleApplication.class, args);
+    }
+}
+```
+
+对于nacos-producer子容器中，存在`RibbonNacosProducerConfig`、`DefaultRibbonConfig`、`RibbonClientConfiguration`3个配置类，而其它子容器只有`DefaultRibbonConfig`、`RibbonClientConfiguration`2个配置类。
+
+而`DefaultRibbonConfig`、`RibbonClientConfiguration`的配置类中的`IRule` bean都有`@ConditionalOnMissingBean`条件注解。
+
+因此对于nacos-producer子容器，只有`RibbonNacosProducerConfig`的`IRule`会被注册到容器中，而对于其它容器则只有`DefaultRibbonConfig`的`IRule`会被注册到容器中。
 
 ### feign特殊化配置
 
