@@ -15,7 +15,7 @@ for port in $(seq 6381 6386);
 do
     conf_dir=./${port}/conf
     conf_file=${conf_dir}/redis.conf
-    log_dir=/${port}/logs
+    log_dir=./${port}/logs
     if [ ! -d ${conf_dir} ]; then
         mkdir -p ${conf_dir}
     fi
@@ -27,19 +27,19 @@ do
     fi
     touch ${conf_file}
     cat  << EOF > ${conf_file}
-    bind 0.0.0.0
-    port ${port}
-    requirepass 123456
-    masterauth 123456
-    dir /data
-    logfile /logs/nodes-${port}.log
-    appendonly yes
-    cluster-enabled yes 
-    cluster-config-file nodes-${port}.conf
-    cluster-node-timeout 5000
-    cluster-announce-ip 192.168.2.102
-    cluster-announce-port ${port}
-    cluster-announce-bus-port 1${port}
+bind 0.0.0.0
+port ${port}
+requirepass 123456
+masterauth 123456
+dir /data
+logfile /logs/nodes-${port}.log
+appendonly yes
+cluster-enabled yes 
+cluster-config-file nodes-${port}.conf
+cluster-node-timeout 5000
+# cluster-announce-ip 192.168.2.102
+# cluster-announce-port ${port}
+# cluster-announce-bus-port 1${port}
 EOF
 done
 
@@ -86,7 +86,7 @@ cluster-announce-bus-port 16381
 
 * masterauth, 如果master节点设置了密码，slave节点配置文件必须指定该属性的值为master配置的密码，不然无法主从同步。
 
-* cluster-announce-ip作用，如果不设置这几个字段，cluster-config-file指定的集群配置信息文件将会记录的是容器的ip，如果各个节点不在同一台宿主机中，那么各集群节点将无法通信。(同一宿主机的容器是可以通过容器ip通信的)。
+* cluster-announce-ip、cluster-announce-port、cluster-announce-bus-port作用，如果不设置这几个字段，cluster-config-file指定的集群配置信息文件将会记录的是容器的ip，如果各个节点不在同一台宿主机中，那么各集群节点将无法通信。(同一宿主机的容器是可以通过容器ip通信的)。因为下面部署时是同一台机器且同一个网段，所以把这3个属性都注释了，这样不用依赖宿主机ip，无网络也可以启动redis集群，**生产部署不要这么玩**。
 
 * 各节点是通过另外一个名为总线端口(bus-port)来通信，该端口为port+10000，因此为16381，宿主机映射端口时将宿主机的16381端口与容器的16381端口进行映射，所以cluster-announce-bus-port得值设置16381。这样各集群节点就可以通过宿主机ip+映射端口进行通信了。
 
@@ -96,7 +96,7 @@ cluster-announce-bus-port 16381
 
   ce30a10f22dfea5374588a5a34217d4053dea863：节点唯一标识。
 
-  192.168.2.102:6381@16381：节点ip、port、bus-port，也就是cluster-announce-ip、cluster-announce-port、cluster-announce-bus-port配置的值。
+  192.168.2.102:6381@16381：节点ip、port、bus-port，也就是**cluster-announce-ip、cluster-announce-port、cluster-announce-bus-port**配置的值。
 
   master: 该节点为master。
 
@@ -139,6 +139,7 @@ services:
       redis-cluster:
         aliases:
           - redis-6381
+        ipv4_address: 172.19.0.101
           
   redis-6382:
     image: redis:6.2
@@ -157,6 +158,7 @@ services:
       redis-cluster:
         aliases:
           - redis-6382
+        ipv4_address: 172.19.0.102
           
   redis-6383:
     image: redis:6.2
@@ -175,6 +177,7 @@ services:
       redis-cluster:
         aliases:
           - redis-6383
+        ipv4_address: 172.19.0.103
           
   redis-6384:
     image: redis:6.2
@@ -193,6 +196,7 @@ services:
       redis-cluster:
         aliases:
           - redis-6384
+        ipv4_address: 172.19.0.104
           
   redis-6385:
     image: redis:6.2
@@ -211,6 +215,7 @@ services:
       redis-cluster:
         aliases:
           - redis-6385
+        ipv4_address: 172.19.0.105
           
   redis-6386:
     image: redis:6.2
@@ -229,11 +234,16 @@ services:
       redis-cluster:
         aliases:
           - redis-6386
+        ipv4_address: 172.19.0.106
 
 networks:
   redis-cluster:
     name: redis-cluster
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.19.0.0/16
+          gateway: 172.19.0.1
 ```
 
 启动节点
@@ -258,12 +268,12 @@ docker compose exec -it redis-6381 /bin/bash
 使用下面命令创建集群
 
 ```bash
-redis-cli -a 123456 --cluster create 192.168.2.102:6381 192.168.2.102:6382 192.168.2.102:6383 192.168.2.102:6384 192.168.2.102:6385 192.168.2.102:6386 --cluster-replicas 1
+redis-cli -a 123456 --cluster create 172.19.0.101:6381 172.19.0.102:6382 172.19.0.103:6383 172.19.0.104:6384 172.19.0.105:6385 172.19.0.106:6386 --cluster-replicas 1
 ```
 
 其中`--cluster-replicas 1`表示每个master只有1个slave节点。
 
-原本想使用以下命令来执行的，毕竟编写docker-compose文件时特意让6个节点加入到同一个网络中，这样便可以使用名称来访问了，但是redis-cli对于域名或者主机名支持不友好，会报错，于是只好用宿主机ip来代替了。
+原本想使用以下命令来执行的，毕竟编写docker-compose文件时特意让6个节点加入到同一个网络中，这样便可以使用名称来访问了，但是redis-cli对于域名或者主机名支持不友好，会报错，于是只好用容器ip(或者宿主机ip)来代替了。
 
 ```bash
 redis-cli -a 123456 --cluster create redis-6381:6381 redis-6382:6382 redis-6383:6383 redis-6384:6384 redis-6385:6385 redis-6386:6386 --cluster-replicas 1
