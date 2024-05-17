@@ -37,9 +37,9 @@ appendonly yes
 cluster-enabled yes 
 cluster-config-file nodes-${port}.conf
 cluster-node-timeout 5000
-# cluster-announce-ip 192.168.2.102
-# cluster-announce-port ${port}
-# cluster-announce-bus-port 1${port}
+cluster-announce-ip host.docker.internal
+cluster-announce-port ${port}
+cluster-announce-bus-port 1${port}
 EOF
 done
 
@@ -86,9 +86,48 @@ cluster-announce-bus-port 16381
 
 * masterauth, 如果master节点设置了密码，slave节点配置文件必须指定该属性的值为master配置的密码，不然无法主从同步。
 
-* cluster-announce-ip、cluster-announce-port、cluster-announce-bus-port作用，如果不设置这几个字段，cluster-config-file指定的集群配置信息文件将会记录的是容器的ip，如果各个节点不在同一台宿主机中，那么各集群节点将无法通信。(同一宿主机的容器是可以通过容器ip通信的)。因为下面部署时是同一台机器且同一个网段，所以把这3个属性都注释了，这样不用依赖宿主机ip，无网络也可以启动redis集群，**生产部署不要这么玩**。
+* cluster-announce-ip、cluster-announce-port、cluster-announce-bus-port作用，如果不设置这几个字段，cluster-config-file指定的集群配置信息文件将会记录的是容器的ip，如果各个节点不在同一台宿主机中，**那么各集群节点将无法通信**。当然如果在同一宿主机且同一网络下部署集群，那么容器之间是可以通过ip访问的，也就是说集群节点可以相互通信，**redis集群是可以正常工作的**。但是这样会出现一个新问题，客户端连接redis集群时，**返回的拓扑结构也是cluster-config-file配置文件里的ip，即容器ip(即便客户端指定的节点信息是宿主机ip也没用)。**也就是说客户端若无法直接访问集群的容器ip，**则不能连接redis集群**。
 
-* 各节点是通过另外一个名为总线端口(bus-port)来通信，该端口为port+10000，因此为16381，宿主机映射端口时将宿主机的16381端口与容器的16381端口进行映射，所以cluster-announce-bus-port得值设置16381。这样各集群节点就可以通过宿主机ip+映射端口进行通信了。
+  测试现象：
+
+  客户端配置
+
+  ```yml
+  spring:
+    data:
+      redis:
+        cluster:
+          # 使用宿主机ip
+          nodes: 127.0.0.1:6381,127.0.0.1:6382,127.0.0.1:6383,127.0.0.1:6384,127.0.0.1:6385,127.0.0.1:6386
+        password: 123456
+        connect-timeout: 5000
+        timeout: 30000
+  ```
+
+  集群部署信息
+
+  部署在同一宿主机同一网络下，且未设置cluster-announce-ip、cluster-announce-port、cluster-announce-bus-port相关字段
+
+  集群节点：172.19.0.101:6381 172.19.0.102:6382 172.19.0.103:6383 172.19.0.104:6384 172.19.0.105:6385 172.19.0.106:6386
+
+  **每个redis节点都会绑定端口到宿主机的对应端口上**
+
+  由于macos docker中，宿主机是不能访问容器的，将会报以下错误。
+
+  ```txt
+  connection timed out after 5000 ms: /172.19.0.102:6382
+  connection timed out after 5000 ms: /172.19.0.103:6383
+  connection timed out after 5000 ms: /172.19.0.101:6381
+  connection timed out after 5000 ms: /172.19.0.105:6385
+  connection timed out after 5000 ms: /172.19.0.106:6386
+  connection timed out after 5000 ms: /172.19.0.104:6384
+  ```
+
+  由此可见，客户端连接时会使用cluster-config-file配置文件里的ip、port。
+
+* 集群节点之间是通过另外一个名为总线端口(bus-port)来通信，该端口为port+10000，因此为16381，宿主机映射端口时将宿主机的16381端口与容器的16381端口进行映射，所以cluster-announce-bus-port得值设置16381。这样各集群节点就可以通过宿主机ip+映射端口进行通信了。
+
+* **集群节点之间使用cluster-announce-ip:cluster-announce-bus-port通信，客户端连接集群使用cluster-announce-ip:cluster-announce-port通信。因此我们可以设置cluster-announce-ip的值为host.docker.internal，这样集群节点之间可以借助宿主机来通信，而客户端宿主机则可以配置host.docker.internal指向127.0.0.1，客户端也能连上集群了，这样子可以不用依赖宿主机具体的ip信息了，即便没有网络也能愉快的玩耍。**
 
 * cluster-config-file内容示例
 
@@ -272,12 +311,6 @@ redis-cli -a 123456 --cluster create 172.19.0.101:6381 172.19.0.102:6382 172.19.
 ```
 
 其中`--cluster-replicas 1`表示每个master只有1个slave节点。
-
-原本想使用以下命令来执行的，毕竟编写docker-compose文件时特意让6个节点加入到同一个网络中，这样便可以使用名称来访问了，但是redis-cli对于域名或者主机名支持不友好，会报错，于是只好用容器ip(或者宿主机ip)来代替了。
-
-```bash
-redis-cli -a 123456 --cluster create redis-6381:6381 redis-6382:6382 redis-6383:6383 redis-6384:6384 redis-6385:6385 redis-6386:6386 --cluster-replicas 1
-```
 
 #### 查看集群信息
 
