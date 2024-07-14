@@ -157,7 +157,7 @@ START REPLICA;
 #### 验证
 
 ```mysql
--- 注意不需要末尾的分号
+-- 查看复制情况，注意不需要末尾的分号，需要在从库上执行
 SHOW REPLICA STATUS \G
 ```
 
@@ -231,3 +231,14 @@ Slave_IO_Running: Yes
 Slave_SQL_Running: Yes
 
 表示两个线程启动完毕。
+
+### 如何查看主从数据复制完毕
+
+通过在**从库**上执行`SHOW REPLICA STATUS;`
+
+* 查看Slave_SQL_Running_State的值是不是Replica has read all relay log; waiting for more updates，表明全部同步完毕。
+
+* 查看Master_Log_File、Read_Master_Log_Pos，表示获取到的主库上的binlog文件以及位置；
+
+  然后在**主库**上执行`SHOW MASTER STATUS`，可以看到主库上最新的binlog文件以及位置，比较是否相等即可。
+
