@@ -32,7 +32,7 @@ mysqldump -h 127.0.0.1 -P 3306 -u root -p 123456 --single-transaction --set-gtid
 
 ```bash
 # 备份testdb数据库中t1、t2表
-mysqldump -h 127.0.0.1 -P 3306 -u root -p 123456 --single-transaction --set-gtid-purged=OFF testdb t1 t2 > bak.sql
+mysqldump -h 127.0.0.1 -P 3306 -u root -p123456 --single-transaction --set-gtid-purged=OFF testdb t1 t2 > bak.sql
 ```
 
 备份表时不会输出create database语句
@@ -43,3 +43,8 @@ mysqldump -h 127.0.0.1 -P 3306 -u root -p 123456 --single-transaction --set-gtid
 ### 更详细的说明可参考
 
 [https://www.cnblogs.com/digdeep/p/4898622.html](https://www.cnblogs.com/digdeep/p/4898622.html)
+
+### 恢复
+
+* 登录mysql服务端后执行`source bak.sql`，这个会打印每条语句的执行信息，速度很慢。
+* `mysql -h 127.0.0.1 -P 3306 -u root -p123456 < bak.sql`。
