@@ -2,7 +2,7 @@
 
 ### 简介
 
-MySQL的binlog是属于服务层，与存储引擎层无关，注意用于备份恢复、主从复制场景。
+MySQL的binlog是属于服务层，与存储引擎层无关，主要用于备份恢复、主从复制场景。
 
 ### 开启binlog
 
@@ -74,7 +74,7 @@ purge binary logs to 'binlog.000003';
 ```bash
 # 查看内容，如果binlog_rows_query_log_events开启，ROW模式不仅可以看到前后的数据
 # 而且可以看到执行的sql，这些内容都出现在结果文件中的注释部分
-# binlog文件为全路径
+# binlog文件为全路径，可以接多个binlog文件，使用空格分隔
 mysqlbinlog --database=test --base64-output=decode-rows -vv /usr/local/mysql/data/binlog.000057 > tmp.sql
 ```
 
@@ -83,11 +83,12 @@ mysqlbinlog --database=test --base64-output=decode-rows -vv /usr/local/mysql/dat
 * --database，只导出指定数据库的内容
 * -v，输出详细信息，包括数据行的前后信息等
 * -vv，在-v的基础上增加列的数据类型信息
-* --start-position，指定一个开始位置，如--start-position=213
-* --stop-position，指定一个结束位置，如--stop-position=416
+* --start-position，指定一个开始位置，如--start-position=213，针对指定binlog文件列表的第一个文件
+* --stop-position，指定一个结束位置，如--stop-position=416，针对指定binlog文件列表的最后一个文件
 * --start-datetime，指定事件开始时间，如--start-datetime=‘2024-07-14 12:30:00’
 * --stop-datetime，指定事件结束时间，如--stop-datetime=‘2024-07-14 13:30:00’
 * --skip-gtids，忽略gtid信息，如果是在备库执行，为了保持和主库一致，不要启用这个选项
+* --raw，返回原始的二进制形式，用于binlog文件本身备份
 
 示例
 
@@ -206,4 +207,4 @@ mysqlbinlog --start-position=157 --stop-position=622 /usr/local/mysql/data/binlo
 
 这里可以不用增加-vv、--base64-output=decode-rows，加这些东西是为了让人类看的更清晰。
 
-这里主要的点是需要知道binlog的位置范围，使用mysqldump进行逻辑备份时可以指定选项master-data=2在备份文件中输出当时备份时候binlog的位置信息。
+这里主要的点是需要知道binlog的位置范围，使用mysqldump进行逻辑备份时可以指定选项source-data=2(低版本是master-data=2)在备份文件中输出当时备份时候binlog的位置信息。
