@@ -6,6 +6,8 @@ NIO基于`ServerSocketChannel`
 
 NIO2基于`AsynchronousServerSocketChannel`
 
+后面都是基于NIO模式来进行阐述。
+
 ### Tomcat线程池
 
 tomcat中的线程池实现为`ThreadPoolExecutor`，基本上是复制了JDK中的`ThreadPoolExecutor`，与JDK中的线程池主要区别在于**阻塞队列实现**，而execute方法并没有区别。
