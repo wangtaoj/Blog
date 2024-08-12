@@ -10,13 +10,13 @@ NIO2基于`AsynchronousServerSocketChannel`
 
 ### Tomcat线程池
 
-tomcat中的线程池实现为`ThreadPoolExecutor`，基本上是复制了JDK中的`ThreadPoolExecutor`，与JDK中的线程池主要区别在于**阻塞队列实现**，而execute方法并没有区别。
+tomcat中的线程池实现为`ThreadPoolExecutor`，基本上是复制了JDK中的`ThreadPoolExecutor`，与JDK中的线程池主要区别在于**阻塞队列实现，execute方法多了一层异常捕获，超出最大线程数量后会抛出异常，捕获它将任务插入到阻塞队列中**。
 
 JDK中的线程池提交逻辑是，小于核心线程数量时，新建线程来执行任务，超过核心线程数量后，放入阻塞队列中，阻塞队列满了，新建线程来执行任务，当线程数量超过最大线程数时，则执行拒绝策略。
 
-tomcat中的线程池提交逻辑是，小于核心线程数量时，新建线程来执行任务，超过核心线程数量后，**还是新建线程来执行任务，当线程数量超过最大线程数时，将任务放入阻塞队列中，阻塞队列满了，则执行拒绝策略。**
+tomcat中的线程池提交逻辑是，小于核心线程数量时，新建线程来执行任务，超过核心线程数量后，**还是新建线程来执行任务，当线程数量超过最大线程数时，将任务放入阻塞队列中，阻塞队列满了，则抛出异常。**
 
-**tomcat的目标是要尽可能的多开线程来处理请求，而不是优先放入阻塞队列。**
+**tomcat的目标是要尽可能的多开线程来处理请求，而不是优先放入阻塞队列，因为tomcat中的任务主要是IO密集型，并且要尽快响应请求数据给用户，而不是排队等着。**
 
 ### Tomcat线程池阻塞队列
 
@@ -37,7 +37,7 @@ public class TaskQueue extends LinkedBlockingQueue<Runnable> {
         if (parent.getPoolSizeNoLock() == parent.getMaximumPoolSize()) {
             return super.offer(o);
         }
-        //we have idle threads, just add it to the queue
+        // 线程池中的任务小于等于线程数量，此时有线程来执行新增加的任务，因此直接插入到队列中
         if (parent.getSubmittedCount() <= parent.getPoolSizeNoLock()) {
             return super.offer(o);
         }
@@ -51,7 +51,41 @@ public class TaskQueue extends LinkedBlockingQueue<Runnable> {
 }
 ```
 
-### tomcat connector的几个重要参数
+### Tomcat线程池execute方法
+
+```java
+@Override
+public void execute(Runnable command) {
+    // 提交任务数量加1, 任务执行完后会减1，逻辑在afterExecute中
+    submittedCount.incrementAndGet();
+    try {
+        // 执行提交逻辑, 这个和JDK中的线程池execute一模一样
+        executeInternal(command);
+    } catch (RejectedExecutionException rx) {
+        /*
+         * DK中提交任务时线程数量达到最大数量后会执行拒绝策略，默认是抛出异常
+         * 这里捕获该异常将任务插入到阻塞队列中
+         * 这样就实现了先新增线程执行任务，达到最大线程数量后将任务插入到阻塞队列中
+         */
+        if (getQueue() instanceof TaskQueue) {
+            // If the Executor is close to maximum pool size, concurrent
+            // calls to execute() may result (due to Tomcat's use of
+            // TaskQueue) in some tasks being rejected rather than queued.
+            // If this happens, add them to the queue.
+            final TaskQueue queue = (TaskQueue) getQueue();
+            if (!queue.force(command)) {
+                submittedCount.decrementAndGet();
+                throw new RejectedExecutionException(sm.getString("threadPoolExecutor.queueFull"));
+            }
+        } else {
+            submittedCount.decrementAndGet();
+            throw rx;
+        }
+    }
+}
+```
+
+### Tomcat connector的几个重要参数
 
 * maxConnections，默认值为8192，允许的最大socket连接数，当连接数达到最大值，acceptor线程将会阻塞，不再调用`ServerSocketChannel.accept()`方法接收新的socket连接。
 * acceptCount，默认值为100，操作系统挂起socket连接的最大值，等同于`ServerSocketChannel.bind()`方法的`backlog`参数。当客户端连接到服务端时，如果服务端没有调用accept获取连接，这个连接将会处于一个队列中，当队列中的连接数超过`backlog`参数后，客户端将会报错connection refuse。而调用accept方法则会从队列中取走一个连接。
@@ -73,7 +107,7 @@ tomcat处理请求时，都会使用一个线程来处理，如果需要处理�
 
 可以根据这些配置顺藤摸瓜找到`TomcatWebServerFactoryCustomizer`配置类，可以看这个类怎么将这些配置给设置到tomcat中。
 
-### tomcat连接处理机制
+### Tomcat连接处理机制
 
 NIO模式核心的类为`NioEndpoint`、`Acceptor`、`Poller`。
 
@@ -181,7 +215,7 @@ public void createExecutor() {
 }
 ```
 
-### socket连接关闭时机
+### Socket连接关闭时机
 
 两种正常关闭情况
 
