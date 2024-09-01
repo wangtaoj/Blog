@@ -47,11 +47,9 @@ time_zone参数对TIMESTAMP字段的影响
 
 ### MySQL驱动
 
-JDBC驱动也可以明确设置时区，这样子就会设置每个会话的时区，覆盖掉`time_zone`的全局设置，**time_zone**作用域分为会话级别和全局级别。
+JDBC驱动有3个重要参数
 
-```java
-String url = "jdbc:mysql://localhost:3306/testdb?connectionTimeZone=Asia/Shanghai&forceConnectionTimeZoneToSession=true";
-```
+**首先明确一点的是，对于TIMESTAMP类型，MySQL服务端发送给JDBC驱动的是一个已经根据time_zone系统变量转换后的时间，而不是到1970-01-01 00:00:00的秒数。**
 
 * connectionTimeZone，时区，如果不设置，将会获取当前会话的`time_zone`变量值。格式为ZoneId，形如+8:00，或者名字Asia/Shanghai，别名serverTimezone。
 * forceConnectionTimeZoneToSession，默认为false，是否需要设置会话的`time_zone`变量。
@@ -61,15 +59,27 @@ String url = "jdbc:mysql://localhost:3306/testdb?connectionTimeZone=Asia/Shangha
 
 当`forceConnectionTimeZoneToSession`=false时，对于TIMESTAMP类型不会产生任何时区影响，因为不会设置`time_zone`变量的值，`time_zone`取决于服务端设置的全局作用域，不受`connectionTimeZone`影响。并且时区转换动作由MySQL服务端自动完成的，然后再发给JDBC驱动。
 
-当`preserveInstants` =true时，如果Java中的类型是`OffsetDateTime`或者`ZonedDateTime`，即带有时区的类型，会将MySQL发过来的时间(若列的类型是TIMESTAMP，已经是根据time_zone转换完的时间，没有时区信息了)带上connectionTimeZone时区，若`preserveInstants` =false时，时区使用JVM的系统时区`TimeZone.default()`。
+当preserveInstants=true时的行为
 
-preserveInstants=true的生效条件
+**存储时**
 
-存储时，列的类型必须为TIMESTAMP。Java类型是`OffsetDateTime`、`ZonedDateTime`、`java.sql.Timestamp`
+若列的类型为TIMESTAMP，Java类型是`OffsetDateTime`、`ZonedDateTime`、`java.sql.Timestamp`则会进行时区转换。
 
-检索时，列的类型是TIMESTAMP、DATETIME、字符串类型并且接收的Java类型是`OffsetDateTime`、`ZonedDateTime`、`java.sql.Timestamp`，需要两个条件同时满足。
+比如OffsetDateTime字段的值为2024-09-01 17:06:00 UTC+8，connectionTimeZone为UTC+9，则发送给MySQL服务端的是
 
-其它情况通通使用JVM的系统时区`TimeZone.default()`
+2024-09-01 18:06:00，加一个小时。
+
+**检索时**
+
+若列的类型是TIMESTAMP、DATETIME、字符串类型，Java类型是`OffsetDateTime`、`ZonedDateTime`、`java.sql.Timestamp`，
+
+则会保留时区信息。
+
+MySQL发送给JDBC驱动的时间是2024-09-01 18:06:00，JDBC驱动再根据connectionTimeZone时区信息合成最终的结果。
+
+即2024-09-01 18:06:00 UTC+9
+
+若preserveInstants=false，则上面存储转换时使用的时区TimeZone.getDefault()，检索时保留的时区也是TimeZone.getDefault()
 
 ### 最佳实践
 
@@ -103,13 +113,9 @@ MySQL发送给JDBC驱动的时间是2024-09-01 18:06:00，由于preserveInstants
 
 **对于列是TIMESTAMP类型，Java类型是LocalDateTime。**
 
-由于保存时，对于LocalDateTime不会进行转换，因为LocalDateTime没有时区信息，MySQL相当于保存的是2024-09-01 17:06:00 UTC+9
+由于保存时，对于LocalDateTime不会进行转换，因为LocalDateTime没有时区信息，发送给MySQL的值为2024-09-01 17:06:00 ，L相当于保存的是2024-09-01 17:06:00 UTC+9
 
-查询时，会保留connectionTimeZone时区，即2024-09-01 17:06:00 UTC+9，会出现不一致现象。
-
-**即存的时候是2024-09-01 17:06:00 UTC+8(看似)，检索的时候2024-09-01 17:06:00 UTC+9**
-
-**本质上是LocalDateTime本身没有时区信息，存的时候实际上是2024-09-01 17:06:00**
+查询时，MySQL发送给JDBC驱动的时间是2024-09-01 17:06:00，驱动对于LocalDateTime类型不会进行转换，这就是最终结果。时间是一致的。
 
 ### 源码参考
 
