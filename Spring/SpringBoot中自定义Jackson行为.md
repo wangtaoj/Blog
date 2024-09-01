@@ -62,61 +62,21 @@ static class JacksonObjectMapperBuilderConfiguration {
 如以下代码所示
 
 ```java
-package com.wangtao.springboottest.config;
-
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.fasterxml.jackson.datatype.jsr310.deser.LocalDateDeserializer;
-import com.fasterxml.jackson.datatype.jsr310.deser.LocalDateTimeDeserializer;
-import com.fasterxml.jackson.datatype.jsr310.deser.LocalTimeDeserializer;
-import com.fasterxml.jackson.datatype.jsr310.ser.LocalDateSerializer;
-import com.fasterxml.jackson.datatype.jsr310.ser.LocalDateTimeSerializer;
-import com.fasterxml.jackson.datatype.jsr310.ser.LocalTimeSerializer;
-import org.springframework.boot.autoconfigure.jackson.Jackson2ObjectMapperBuilderCustomizer;
-import org.springframework.http.converter.json.Jackson2ObjectMapperBuilder;
-import org.springframework.stereotype.Component;
-
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.LocalTime;
-import java.time.format.DateTimeFormatter;
-
 @Component
 public class JacksonCustomizer implements Jackson2ObjectMapperBuilderCustomizer {
 
-    private static final String STANDARD_PATTERN = "yyyy-MM-dd HH:mm:ss";
-
-    private static final String DATE_PATTERN = "yyyy-MM-dd";
-
-    private static final String TIME_PATTERN = "HH:mm:ss";
+    public JacksonCustomizer() {
+        super();
+    }
 
     @Override
     public void customize(Jackson2ObjectMapperBuilder builder) {
         // 初始化JavaTimeModule
-        JavaTimeModule javaTimeModule = new JavaTimeModule();
+        JavaTimeModule javaTimeModule = JavaTimeModuleUtils.create();
 
-        //处理LocalDateTime
-        DateTimeFormatter dateTimeFormatter = DateTimeFormatter
-            .ofPattern(STANDARD_PATTERN);
-        javaTimeModule.addSerializer(LocalDateTime.class, 
-                                     new LocalDateTimeSerializer(dateTimeFormatter));
-        javaTimeModule.addDeserializer(LocalDateTime.class, 
-                                       new LocalDateTimeDeserializer(dateTimeFormatter));
-
-        //处理LocalDate
-        DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern(DATE_PATTERN);
-        javaTimeModule.addSerializer(LocalDate.class, 
-                                     new LocalDateSerializer(dateFormatter));
-        javaTimeModule.addDeserializer(LocalDate.class, 
-                                       new LocalDateDeserializer(dateFormatter));
-
-        //处理LocalTime
-        DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern(TIME_PATTERN);
-        javaTimeModule.addSerializer(LocalTime.class, 
-                                     new LocalTimeSerializer(timeFormatter));
-        javaTimeModule.addDeserializer(LocalTime.class, 
-                                       new LocalTimeDeserializer(timeFormatter));
+        SimpleModule simpleModule = new SimpleModule();
+        // 添加BigDecimal的自定义序列化器
+        simpleModule.addSerializer(new BigDecimalSerializer());
 
         /*
          * 1. java.util.Date yyyy-MM-dd HH:mm:ss
@@ -125,14 +85,77 @@ public class JacksonCustomizer implements Jackson2ObjectMapperBuilderCustomizer 
          * 4. 序列化时包含所有字段
          * 5. 在序列化一个空对象时时不抛出异常
          * 6. 忽略反序列化时在json字符串中存在, 但在java对象中不存在的属性
+         * 7. BigDecimal.toPlainString()方法, 这样不会有科学计数法(序列化后仍是数字, 不是字符串)
+         *    由于上面注册了自定义的BigDecimal序列化器, 该配置便没有效果了
          */
-        builder.simpleDateFormat(STANDARD_PATTERN)
-                .modules(javaTimeModule, new Jdk8Module())
+        builder.simpleDateFormat(JavaTimeModuleUtils.STANDARD_PATTERN)
+                .timeZone(TimeZone.getDefault())
+                .modules(javaTimeModule, new Jdk8Module(), simpleModule)
                 .serializationInclusion(JsonInclude.Include.ALWAYS)
                 .failOnEmptyBeans(false)
-                .failOnUnknownProperties(false);
+                .failOnUnknownProperties(false)
+                .featuresToEnable(JsonGenerator.Feature.WRITE_BIGDECIMAL_AS_PLAIN);
     }
 }
 
+```
+
+JavaTimeModuleUtils.java
+
+```java
+public final class JavaTimeModuleUtils {
+
+    public static final String STANDARD_PATTERN = "yyyy-MM-dd HH:mm:ss";
+
+    public static final String DATE_PATTERN = "yyyy-MM-dd";
+
+    public static final String TIME_PATTERN = "HH:mm:ss";
+
+    private JavaTimeModuleUtils() {}
+
+    public static JavaTimeModule create() {
+        // 初始化JavaTimeModule
+        JavaTimeModule javaTimeModule = new JavaTimeModule();
+
+        //处理LocalDateTime
+        DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern(STANDARD_PATTERN);
+        javaTimeModule.addSerializer(LocalDateTime.class, new LocalDateTimeSerializer(dateTimeFormatter));
+        javaTimeModule.addDeserializer(LocalDateTime.class, new LocalDateTimeDeserializer(dateTimeFormatter));
+
+        //处理LocalDate
+        DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern(DATE_PATTERN);
+        javaTimeModule.addSerializer(LocalDate.class, new LocalDateSerializer(dateFormatter));
+        javaTimeModule.addDeserializer(LocalDate.class, new LocalDateDeserializer(dateFormatter));
+
+        //处理LocalTime
+        DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern(TIME_PATTERN);
+        javaTimeModule.addSerializer(LocalTime.class, new LocalTimeSerializer(timeFormatter));
+        javaTimeModule.addDeserializer(LocalTime.class, new LocalTimeDeserializer(timeFormatter));
+        return javaTimeModule;
+    }
+}
+```
+
+BigDecimalSerializer.java
+
+```java
+public class BigDecimalSerializer extends StdSerializer<BigDecimal> {
+
+    @Serial
+    private static final long serialVersionUID = -82683766308966384L;
+
+    public BigDecimalSerializer() {
+        super(BigDecimal.class);
+    }
+
+    @Override
+    public void serialize(BigDecimal value, JsonGenerator gen, SerializerProvider provider) throws IOException {
+        if (Objects.nonNull(value)) {
+            gen.writeString(value.stripTrailingZeros().toPlainString());
+        } else {
+            gen.writeNull();
+        }
+    }
+}
 ```
 
