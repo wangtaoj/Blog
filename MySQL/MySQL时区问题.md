@@ -1,12 +1,12 @@
 ### 时间类型
 
-* TIMESTAMP：占用4个字节(有符号整数)，即最大值为2,147,483,647 (1 << 31 - 1)，转成时间就是2038-01-19 03:14:07。这个时间是UTC时区。存储的是该时间距离1970-01-01 00:00:00的**秒数**。
+* TIMESTAMP：占用4个字节(有符号整数)，即最大值为2,147,483,647 (1 << 31 - 1)，转成时间就是2038-01-19 03:14:07。这个时间是UTC时区。存储的是该时间距离1970-01-01 00:00:01的**秒数**。
 
 * DATETIME：占用8个字节，与时区无关，不会进行转换。
 
 **两个重点**
 
-**TIMESTAMP存储单位是秒，代表UTC时区时间到1970-01-01 00:00:00的秒数**
+**TIMESTAMP存储单位是秒，代表UTC时区时间到1970-01-01 00:00:01的秒数**
 
 注: TIMESTAMP后面增加了精确位，加了小数位，相应占用的字节会变多，用来存储小数秒，这样可以精确到毫秒、微秒。
 
@@ -49,7 +49,7 @@ time_zone参数对TIMESTAMP字段的影响
 
 JDBC驱动有3个重要参数
 
-**首先明确一点的是，对于TIMESTAMP类型，MySQL服务端发送给JDBC驱动的是一个已经根据time_zone系统变量转换后的时间，而不是到1970-01-01 00:00:00的秒数。**
+**首先明确一点的是，对于TIMESTAMP类型，MySQL服务端发送给JDBC驱动的是一个已经根据time_zone系统变量转换后的时间，而不是到1970-01-01 00:00:01的秒数。**
 
 * connectionTimeZone，时区，如果不设置，将会获取当前会话的`time_zone`变量值。格式为ZoneId，形如+8:00，或者名字Asia/Shanghai，别名serverTimezone。
 * forceConnectionTimeZoneToSession，默认为false，是否需要设置会话的`time_zone`变量。
@@ -64,6 +64,8 @@ JDBC驱动有3个重要参数
 **存储时**
 
 若列的类型为TIMESTAMP，Java类型是`OffsetDateTime`、`ZonedDateTime`、`java.sql.Timestamp`则会进行时区转换。
+
+其中前面两个好理解因为它们都是带有时区信息的，而`java.sql.Timestamp`本质上是一个时间戳，代表的是到1970-01-01 00:00:01毫秒数，因此可以配合时区转换一个对应时区的时间。`java.util.Date`在JDBC中都是转换成`java.sql.Timestamp`或者`java.sql.Date`或者`java.sql.Time`来处理的。
 
 比如OffsetDateTime字段的值为2024-09-01 17:06:00 UTC+8，connectionTimeZone为UTC+9，则发送给MySQL服务端的是
 
@@ -119,6 +121,6 @@ MySQL发送给JDBC驱动的时间是2024-09-01 18:06:00，由于preserveInstants
 
 ### 源码参考
 
-保存：`ZonedDateTimeValueEncoder`、`LocalDateTimeValueEncoder`
+保存：`ValueEncoder`、`ZonedDateTimeValueEncoder`、`LocalDateTimeValueEncoder`、`SqlTimestampValueEncoder`
 
-检索：`MysqlTextValueDecoder`、`LocalDateTimeValueFactory`、`ZonedDateTimeValueFactory`
+检索：`MysqlTextValueDecoder`、`LocalDateTimeValueFactory`、`ZonedDateTimeValueFactory`、`SqlTimestampValueFactory`
