@@ -287,7 +287,7 @@ formatter = formatter.withZone(ZoneOffset.ofHours(9));
 
 `DateTimeFormatter`中的时区属性默认值为null，而不是系统所在时区，和`SimpleDateFormat`不同。
 
-`LocalDateTime`格式化时不会不会进行时区转换，因为本身没有时区概念。
+`LocalDateTime`格式化时不会进行时区转换，因为本身没有时区概念。
 
 `ZonedDateTime`、`OffsetDateTime`格式化时，只有当`DateTimeFormatter`明确指定了时区才会进行转换。`ZonedDateTime`、`OffsetDateTime`携带的时区为源，`DateTimeFormatter`中的时区为目标时区。
 
