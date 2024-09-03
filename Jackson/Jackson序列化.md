@@ -122,13 +122,29 @@ objectMapper.registerModules(simpleModule);
 ### Jackson对于时间的处理
 
 #### 默认情况下
-* 对于java.util.Date、java.sql.Date、java.sql.Timestamp这些时间类, 都会序列化成一个long型的时间戳
-* 对于Java8中新的时间类, 则会序列化成一个数组, 格式为[年, 月, 日, 时, 分, 秒, 毫秒] 或者 [年, 月, 日], 当然要使用新的时间类, 需要加入jsr310模块, 在初始化时需要注册时间模块
-`objectMapper.registerModule(new JavaTimeModule());`
+* 对于java.util.Date、java.sql.Date、java.sql.Timestamp这些时间类, 都会序列化成一个long型的时间戳，因为他们本身存储的就是到纪元时间的毫秒数(纳秒数)。
+* 对于Java8中新的时间类, 前提必须是要注册jsr310时间模块，`objectMapper.registerModule(new JavaTimeModule())`。
+* 对于LocalDateTime，序列化成一个数组，格式为[年, 月, 日, 时, 分, 秒, 纳秒] 。
+* 对于LocalDate，序列化成一个数组，格式为[年, 月, 日]。
+* 对于LocalTime，序列化成一个数组，格式为[时, 分, 秒, 纳秒]。
+* 对于ZonedDateTime、OffsetDateTime、Instant，序列化成一个浮点数，整数部分是秒，小数部分是纳秒。
+
+对于JDK8中这样的现象其实很好理解，因为LocalDateTime、LocalDate、LocalTime是本地时间，没有时区概念，没有办法转成纪元毫秒数(纳秒数)。而ZonedDateTime、OffsetDateTime本身携带时区，是可以转换的。Instant本身存储的就是纪元纳秒数。
+
+序列化成时间戳这个由全局参数控制，默认开启。若想序列化成字符串形式，关闭即可。
+
+```java
+ObjectMapper objectMapper = new ObjectMapper();
+objectMapper.registerModule(new JavaTimeModule());
+// 禁用将日期序列化成时间戳形式
+objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+```
+
+禁用之后，序列化之后的字符串大概率不是我们想要的形式。若想要自定义格式则得知道它们对应的序列化器是哪个类。
 
 #### 序列化器
 
-java.util.Date：DateSerializer
+java.util.Date、java.sql.Date、java.sql.Timestamp：DateSerializer
 
 LocalDateTime：LocalDateTimeSerializer
 
@@ -136,11 +152,19 @@ LocalDate：LocalDateSerializer
 
 LocalTime：LocalTimeDeserializer
 
-最终序列化成什么形式，其实主要看的是序列化器中DateFormat(旧的日期API)、DateTimeFormatter(jsr310)
+ZonedDateTime: ZonedDateTimeSerializer
 
-每次序列化时，若不是序列化成默认格式时(@JsonFormat注解可以修改当前字段的序列化格式)，会基于全局配置的DateFormat(DateTimeFormatter) + @JsonFormat注解的配置生成一个新的DateFormat(DateTimeFormatter)用来格式化，这个逻辑位于序列化器中的**createContextual**方法中。
+OffsetDateTime：OffsetTimeSerializer
 
-#### 格式化
+Instant：InstantSerializer
+
+这些序列化器内部都有一个INSTANCE静态实例，默认情况下，Jackson就是注册的这个静态实例。
+
+每次序列化时，若有和序列化中的属性不一样，都是会基于这个注册的实例重新创建一个一个实例来序列化。@JsonFormat注解是可以自定义序列化的一些参数的，如pattern、locale、timezone等。重新创建序列化器的过程位于每一个序列化器的**createContextual**方法中。因此若有疑惑的地方看它基本就够了。
+
+最终序列化成什么形式，其实主要看的是序列化器中DateFormat(旧的日期API)、DateTimeFormatter(jsr310)是如何设置的。
+
+#### 自定义格式化
 
 1. 全局处理
 
@@ -153,23 +177,20 @@ objectMapper.setDateFormat(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss"));
 objectMapper.setTimeZone(TimeZone.getDefault());
 ```
 
-如果单一设置DateFormat而不设置TimeZone，在存在@JsonFormat注解时，会产生一些诡异现象，因为@JsonFormat注解如果不指定timeZone属性，则会使用全局的timeZone，即UTC，会覆盖掉DateFormat中的时区TimeZone.getDefault()。
+如果单一设置DateFormat而不设置TimeZone，当存在@JsonFormat注解时，**并且指定了pattern，而没有指定timezone**，会产生一些诡异现象，因为@JsonFormat注解如果不指定timeZone属性，则会使用全局的timeZone，即UTC，会覆盖掉DateFormat中的时区TimeZone.getDefault()。
 
 就会导致字段没有@JsonFormat注解，使用的是TimeZone.getDefault()，而存在@JsonFormat注解(没有明确指定时区)则使用的是UTC时区，从而格式化的结果相差8小时，国内属于东八区。
 
-此方式对于java.util.Date、java.time.LocalDateTime、java.time.LocalDate(对于新的时间类前提是有注册过JavaTimeModule模块)序列化会产生一些变化。
+**附带的影响**
 
-**本质上对JSR310产生影响是因为`setDateFormat`方法会取消将日期序列化成时间戳这么一个全局特征，而不是对他们的序列化器做了什么修改，使得JSR310的序列化器采用序列化器默认的DateTimeFormatter去格式化，而不是产生一个数组[2018,10,17]这样。**
-
-Date: 2018-10-27 14:30:30
-LocalDateTime: 2018-10-27T14:30:30.475
-LocalDate: 2018-10-27
-LocalTime:14:30:30
+* setDateFormat方法会禁用SerializationFeature.WRITE_DATES_AS_TIMESTAMPS
+* setTimeZone设置的是jackson全局时区，不仅对`DateSerializer`有影响，对那些需要时区的序列化器也存在兜底作用，如`ZonedDateTimeSerializer`、`OffsetTimeSerializer`、`InstantSerializer`。若他们内部的`DateTimeFormatter`没有指定时区时，就会使用这个全局的时区。`DateTimeFormatter`不像`SimpleDateFormat`，创建时没有指定时区，则时区是null。而`SimpleDateFormat`不指定时是`TimeZone.getDefault()`。全局时区对于`LocalDateTimeSerializer`、`LocalDateSerializer`、`LocalTimeDeserializer`无影响。
 
 1.2 jsr310，指定全局格式
 
 ```
 JavaTimeModule javaTimeModule = new JavaTimeModule();
+// 注册一个自己指定的LocalDateTimeSerializer，来覆盖掉默认的LocalDateTimeSerializer.INSTANCE
 DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 javaTimeModule.addSerializer(LocalDateTime.class, new LocalDateTimeSerializer(dateTimeFormatter));
 javaTimeModule.addDeserializer(LocalDateTime.class, new LocalDateTimeDeserializer(dateTimeFormatter));
@@ -226,27 +247,12 @@ public class JsonUtils {
 
     static {
 
-        //设置java.util.Date时间类的序列化以及反序列化的格式
+        // 设置全局的DateFormat
         objectMapper.setDateFormat(new SimpleDateFormat(STANDARD_PATTERN));
 
         /*
-         * 设置时区, Jackson默认值为UTC
+         * 设置全局时区, Jackson默认值为UTC
          * 设置成国内时区(Asia/Shanghai), 这样@JsonFormat中不用指定时区了
-         * 同时会把上面的DateFormat时区设置成指定的这个值
-         * 实际上new SimpleDateFormat()默认时区也是TimeZone.getDefault()
-         * 在这里相当于仅仅修改了Jackson的timeZone属性, 这对于@JsonFormat注解会产生影响
-         * 当@JsonFormat注解没有指定timezone属性时
-         * DateSerializer：java.util.Date的序列化器, 会采用Jackson的设置的timeZone和上面设置的dateFormat
-         * 生成一个新的DateFormat来进行序列化。
-         * 因此字段中没有@JsonFormat注解，使用的DateFormat便是上面设置的
-         * 存在@JsonFormat注解时，会基于上面设置的DateFormat，将@JsonFormat注解上的信息合成一个新的DateFormat
-         *
-         * 最佳实践: dateFormat和timeZone同时设置，保证一致，避免@JsonFormat中没有指定timezone属性时，而采用
-         * 默认的UTC时区(ObjectMapper没有设置timeZone时)
-         *
-         * 注: 该方法对于JDK8新加的时间无效, 只影响DateFormat。JDK8新加的时间采用DateTimeFormatter
-         *
-         * 源码提示: 序列化器类中的createContextual方法
          */
         objectMapper.setTimeZone(TimeZone.getDefault());
 
