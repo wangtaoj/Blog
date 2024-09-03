@@ -292,3 +292,78 @@ formatter = formatter.withZone(ZoneOffset.ofHours(9));
 `ZonedDateTime`、`OffsetDateTime`格式化时，只有当`DateTimeFormatter`明确指定了时区才会进行转换。`ZonedDateTime`、`OffsetDateTime`携带的时区为源，`DateTimeFormatter`中的时区为目标时区。
 
 `Instant`格式化时，`DateTimeFormatter`必须指定时区，否则会报错。毕竟纪元毫秒数(纳秒数)搭配时区才能转成时间。
+
+### 时间新旧API互转
+
+两套API互转的桥梁便是`Instant`，因为`Instant`和`Date`存储的都是到纪元时间的毫秒数(纳秒数)。
+
+当然了由于精度不同，`Instant`转`Date`会丢失一点精度，因为`Date`只能存储到毫秒级别。若不想丢精度，可以转成`java.sql.Timsstamp`，它也是可以精确到纳秒的。
+
+java.util.Date.java
+
+```java
+/**
+ * Instant -> Date
+ */
+public static Date from(Instant instant) {
+    try {
+        return new Date(instant.toEpochMilli());
+    } catch (ArithmeticException ex) {
+        throw new IllegalArgumentException(ex);
+    }
+}
+
+/**
+ * Date -> Instant
+ */
+public Instant toInstant() {
+    return Instant.ofEpochMilli(getTime());
+}
+```
+
+有了`Instant`之后，那么`Instant` + `ZoneId` = `ZonedDateTime`，`Instant` + `ZoneOffset` = `OffsetDateTime`。
+
+Instant.java
+
+```java
+/**
+ * Instant -> OffsetDateTime
+ */
+public OffsetDateTime atOffset(ZoneOffset offset) {
+    return OffsetDateTime.ofInstant(this, offset);
+}
+
+/**
+ * Instant -> ZonedDateTime
+ */
+public ZonedDateTime atZone(ZoneId zone) {
+    return ZonedDateTime.ofInstant(this, zone);
+}
+```
+
+而`OffsetDateTime`或者`ZonedDateTime`转`Instant`也很简单，调用它们的`toInstant`方法即可
+
+**一句话总结：Instant+时区便可以转化成对应时区的时间。**
+
+`OfffsetDateTime`或者`ZoneDateTime`去掉时区便是`LocalDateTime`了，相反`LocalDateTime`加上时区就是`OfffsetDateTime`或者`ZoneDateTime`。这里就是单纯的去掉时区或者加上时区，不会发生任何时间转换，因为`LocalDateTime`没有时区概念，就是本地时间。
+
+```java
+// ZoneDateTime -> LocalDateTime
+LocalDateTime localDateTime = zonedDateTime.toLocalDateTime();
+// OffsetDateTime -> LocalDateTime
+LocalDateTime localDateTime = offsetDateTime.toLocalDateTime();
+// LocalDateTime -> ZoneDateTime
+ZoneDateTime zoneDateTime = localDateTime.atZone(ZoneId.of("UTC"));
+// LocalDateTime -> OffsetDateTime
+OffsetDateTime offsetDateTime = localDateTime.atOffset(ZoneOffset.UTC);
+```
+
+最后来一个`java.util.Date` -> `LocalDateTime`，`LocalDateTime` -> `java.util.Date`
+
+```java
+// 先转成东八区时间，然后去掉时区换成本地时间
+LocalDateTime localDateTime = date.toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime();
+// 先将本地时间+时区，然后转成Instant，再到Date
+Date date = Date.from(localDateTime.atZone(ZoneId.systemDefault()).toInstant())
+```
+
