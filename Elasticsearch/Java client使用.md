@@ -52,45 +52,79 @@ Java Client在构建对象时支持Build模式以及Lambda两种形式，暴露�
 </dependency>
 ```
 
-第二步，配置`ObjectMapper`
+第二步，将`ElasticsearchClient`对象注册到Spring容器中
 
-如果不想自定义`ObjectMapper`的行为，可以省略，这里主要想要支持`LocalDate`、`LocalDateTime`类，不然文档中如果包含时间列，反序列成对象时会报错。
-
-在Spring Boot项目中只需加入以下配置即可
+ElasticsearchConfig.java
 
 ```java
-package com.wangtao.msgsearch.config;
-
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.core.JsonGenerator;
-import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.fasterxml.jackson.datatype.jsr310.deser.LocalDateDeserializer;
-import com.fasterxml.jackson.datatype.jsr310.deser.LocalDateTimeDeserializer;
-import com.fasterxml.jackson.datatype.jsr310.deser.LocalTimeDeserializer;
-import com.fasterxml.jackson.datatype.jsr310.ser.LocalDateSerializer;
-import com.fasterxml.jackson.datatype.jsr310.ser.LocalDateTimeSerializer;
-import com.fasterxml.jackson.datatype.jsr310.ser.LocalTimeSerializer;
-import org.springframework.boot.autoconfigure.jackson.Jackson2ObjectMapperBuilderCustomizer;
-import org.springframework.http.converter.json.Jackson2ObjectMapperBuilder;
-import org.springframework.stereotype.Component;
-
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.LocalTime;
-import java.time.format.DateTimeFormatter;
-
-@Component
-public class JacksonCustomizer implements Jackson2ObjectMapperBuilderCustomizer {
+@Configuration
+public class ElasticsearchConfig {
 
     private static final String STANDARD_PATTERN = "yyyy-MM-dd HH:mm:ss";
 
-    private static final String DATE_PATTERN = "yyyy-MM-dd";
+    @Bean
+    public ElasticsearchClient elasticsearchClient() {
+        RestClient restClient = RestClient.builder(
+                new HttpHost("localhost", 9200)).build();
 
-    private static final String TIME_PATTERN = "HH:mm:ss";
+        /*
+         * 7.x版本, JacksonJsonpMapper构造方法会修改传入的ObjectMapper属性
+         * 切记不要使用Spring容器中的ObjectMapper，否则会影响SpringMVC JSON序列化行为
+         */
+        ElasticsearchTransport transport = new RestClientTransport(
+                restClient, new JacksonJsonpMapper(createObjectMapper()));
 
-    @Override
-    public void customize(Jackson2ObjectMapperBuilder builder) {
+        return new ElasticsearchClient(transport);
+    }
+
+    private ObjectMapper createObjectMapper() {
+        ObjectMapper objectMapper = new ObjectMapper();
+
+        // 设置全局的DateFormat
+        objectMapper.setDateFormat(new SimpleDateFormat(STANDARD_PATTERN));
+
+        // 设置全局的时区, Jackson默认值为UTC
+        objectMapper.setTimeZone(TimeZone.getDefault());
+
+        // 初始化JavaTimeModule
+        JavaTimeModule javaTimeModule = JavaTimeModuleUtils.create();
+
+        // 注册模块
+        objectMapper.registerModule(javaTimeModule);
+
+        // 注册JDK新增的一些类型, 比如Optional
+        objectMapper.registerModule(new Jdk8Module());
+
+        // 包含所有字段
+        objectMapper.setSerializationInclusion(JsonInclude.Include.ALWAYS);
+
+        // 在序列化一个空对象时时不抛出异常
+        objectMapper.disable(SerializationFeature.FAIL_ON_EMPTY_BEANS);
+
+        // 忽略反序列化时在json字符串中存在, 但在java对象中不存在的属性
+        objectMapper.disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
+
+        // BigDecimal.toPlainString(), 这样不会有科学计数法
+        objectMapper.enable(JsonGenerator.Feature.WRITE_BIGDECIMAL_AS_PLAIN);
+        return objectMapper;
+    }
+}
+```
+
+JavaTimeModuleUtils.java
+
+```java
+public final class JavaTimeModuleUtils {
+
+    public static final String STANDARD_PATTERN = "yyyy-MM-dd HH:mm:ss";
+
+    public static final String DATE_PATTERN = "yyyy-MM-dd";
+
+    public static final String TIME_PATTERN = "HH:mm:ss";
+
+    private JavaTimeModuleUtils() {}
+
+    public static JavaTimeModule create() {
         // 初始化JavaTimeModule
         JavaTimeModule javaTimeModule = new JavaTimeModule();
 
@@ -108,64 +142,16 @@ public class JacksonCustomizer implements Jackson2ObjectMapperBuilderCustomizer 
         DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern(TIME_PATTERN);
         javaTimeModule.addSerializer(LocalTime.class, new LocalTimeSerializer(timeFormatter));
         javaTimeModule.addDeserializer(LocalTime.class, new LocalTimeDeserializer(timeFormatter));
-
-        /*
-         * 1. java.util.Date yyyy-MM-dd HH:mm:ss
-         * 2. 支持JDK8 LocalDateTime、LocalDate、 LocalTime
-         * 3. Jdk8Module模块支持如Stream、Optional等类
-         * 4. 序列化时包含所有字段
-         * 5. 在序列化一个空对象时时不抛出异常
-         * 6. 忽略反序列化时在json字符串中存在, 但在java对象中不存在的属性
-         * 7. 数字序列化成字符穿且调用BigDecimal.toPlainString()方法
-         */
-        builder.simpleDateFormat(STANDARD_PATTERN)
-                .modules(javaTimeModule, new Jdk8Module())
-                .serializationInclusion(JsonInclude.Include.ALWAYS)
-                .failOnEmptyBeans(false)
-                .failOnUnknownProperties(false)
-                .featuresToEnable(JsonGenerator.Feature.WRITE_BIGDECIMAL_AS_PLAIN);
+        return javaTimeModule;
     }
 }
-
-```
-
-第三步，将`ElasticsearchClient`对象注册到Spring容器中
-
-```java
-package com.wangtao.msgsearch.config;
-
-import co.elastic.clients.elasticsearch.ElasticsearchClient;
-import co.elastic.clients.json.jackson.JacksonJsonpMapper;
-import co.elastic.clients.transport.ElasticsearchTransport;
-import co.elastic.clients.transport.rest_client.RestClientTransport;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.apache.http.HttpHost;
-import org.elasticsearch.client.RestClient;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-
-@Configuration
-public class ElasticsearchConfig {
-
-    @Bean
-    public ElasticsearchClient elasticsearchClient(ObjectMapper objectMapper) {
-        RestClient restClient = RestClient.builder(
-                new HttpHost("localhost", 9200)).build();
-
-        ElasticsearchTransport transport = new RestClientTransport(
-                restClient, new JacksonJsonpMapper(objectMapper));
-
-        return new ElasticsearchClient(transport);
-    }
-}
-
 ```
 
 ### 客户端请求日志
 
 如果想要查看客户端发送给服务端的具体请求信息，需要打开以下日志，这个对于开发调试时很有帮助，生产模式务必关闭，因为不仅会打印请求参数日志，还会把服务端的响应信息也打印出来。
 
-具体可参加`RestClient.convertResponse()`、`RequestLogger.logResponse()`两个方法。
+具体可参见`RestClient.convertResponse()`、`RequestLogger.logResponse()`两个方法。
 
 只打印请求行
 
