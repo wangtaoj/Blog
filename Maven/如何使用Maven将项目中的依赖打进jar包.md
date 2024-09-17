@@ -135,7 +135,13 @@
 #### maven-source-plugin
 
 * 绑定的生命周期需要为`package`，不要设置成`verify`。因为`maven-shade-plugin`要将`maven-source-plugin`生成的项目源码包和自己生成的第三方依赖源码包合成最终的源码包。
-* `attach`参数要设置成false，默认为true，否则会报错。参数含义：不要将构建的源码jar附加到构建产物中。
+
+* `attach`参数要设置成false，默认为true，否则会有如下警告。参数含义：不要将构建的源码jar附加到构建产物中。关闭之后由`maven-shade-plugin`来attach。
+
+  ```tex
+  artifact com.wangtao:enhanced-thread-local:java-source:sources:1.0.0 already attached, replace previous instance
+  ```
+
 * 如果没有`maven-shade-plugin`插件，只是把项目源码安装到本地仓库，则绑定生命周期为`verify`、`attach`设置成true，是比较好的工程实践，这样子`mvn package`命令不会触发生成源码包的任务，因为生命周期顺序为package->verify->install。install的目标是构建产物，因此需要把`attach`设置成true，才会把源码包也会安装到本地仓库中。
 
 #### maven-shade-plugin
