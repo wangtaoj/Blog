@@ -208,5 +208,7 @@ ssh -T git@github.com
 ssh -vT git@github.com
 ```
 
+另外这里配置Hostname为ssh.github.com、Port为443，而不是使用Hostname为github.com、Port为22，是因为可能有一些代理对22端口做了限制，github提供了更安全的443端口。
 
+这一个可以参考[官方文档](https://docs.github.com/zh/authentication/troubleshooting-ssh/using-ssh-over-the-https-port)
 
