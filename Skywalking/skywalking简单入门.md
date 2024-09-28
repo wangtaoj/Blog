@@ -67,7 +67,7 @@ OAP开放了两个端口，其中11800给agent使用，12800给ui使用。
 ```yaml
 storage:
   elasticsearch:
-	dayStep: ${SW_STORAGE_DAY_STEP:1}
+    dayStep: ${SW_STORAGE_DAY_STEP:1}
 ```
 
 默认值为1，所以每天都会重新创建一个索引来保存当天的数据，可以通过环境变量`SW_STORAGE_DAY_STEP`指定值。
