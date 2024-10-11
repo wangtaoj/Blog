@@ -21,7 +21,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
 * **?**：匹配单个字符
 
 * **\***：匹配零个或者多个字符
-* ******：匹配零个或者多个目录(包括子目录)
+* **\****：匹配零个或者多个目录(包括子目录)
 
 ### 定位静态资源逻辑
 
