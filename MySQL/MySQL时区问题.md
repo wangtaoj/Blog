@@ -51,7 +51,7 @@ JDBC驱动有3个重要参数
 
 **首先明确一点的是，对于TIMESTAMP类型，MySQL服务端发送给JDBC驱动的是一个已经根据time_zone系统变量转换后的时间，而不是到1970-01-01 00:00:00的秒数。**
 
-* connectionTimeZone，时区，如果不设置，将会获取当前会话的`time_zone`变量值。格式为ZoneId，形如+8:00，或者名字Asia/Shanghai，别名serverTimezone。
+* connectionTimeZone，时区，格式为ZoneId，形如+08:00，或者名字Asia/Shanghai，别名serverTimezone。还有两个特殊值，`LOCAL`与`SERVER`，其中`Local`含义为取JVM默认时区，而`SERVER`则是获取当前会话中MySQL的`time_zone`变量值，该参数默认值为`LOCAL`。
 * forceConnectionTimeZoneToSession，默认为false，是否需要设置会话的`time_zone`变量。
 * preserveInstants，默认为true，保留时区信息，这个是jdbc驱动自己的行为。
 
