@@ -60,11 +60,62 @@ public Object doRound(ProceedingJoinPoint jp) {
     }  
 }
 ```
+### 绑定参数
+
+上面的例子中可以看到绑定方法的返回值或者异常，而绑定参数则需要借助`args`切点指示器，下面以前置通知为例。
+
+```java
+@Slf4j
+@Aspect
+@Component
+public class AspectDemo {
+
+    /**
+     * 拦截被MyTransactional注解的方法，并且参数有两个，类型是String和int
+     * argNames可以省略，作用是为了标记方法上参数名称，因为Java在没有开启-paramter参数编译时
+     * 反射是获取不到参数名字的, 不过Spring通过ASM读取字节码文件依然可以获取到参数名称
+     * 
+     * 注: args里的参数名称是下面方法(advice), 不是拦截方法的参数, 根据参数名称来获取参数类型
+     */
+    @Before(value = "@annotation(com.wangtao.springboottest.aspect.MyTransactional) && args(param1, param2)", argNames = "param1,param2")
+    public void bindArgs(String param1, int param2) {
+        log.info("========before {}, {}=======", param1, param2);
+    }
+}
+```
+
 ### 切点表达式
+
+#### args
+
+目标方法参数个数和类型需要一致才会被拦截，多个参数使用逗号分割
+
+```java
+/**
+ * 用法一
+ * 直接指定参数类型
+ */
+@Before(value = "args(java.lang.String, int)")
+public void doBefore() {
+    
+}
+
+/**
+ * 用法二
+ * 根据通知方法的参数名称推断参数类型，并且还可以将拦截方法的调用参数绑定到通知方法参数中
+ * 注: 还是根据参数类型和个数来拦截，不是参数名称
+ */
+@Before(value = "args(param1, param2)", argNames = "param1,param2")
+public void bindArgs(String param1, int param2) {
+    log.info("========before {}, {}=======", param1, param2);
+}
+```
+
 #### @annotation
 方法存在指定的注解，将会被拦截
 使用例子：
 创建一个自定义注解
+
 ```java
 package com.wangtao.aop.annotation;
 
@@ -131,7 +182,26 @@ public class AnnotationAspect {
     }
 }
 ```
+#### @within
+
+**声明方法的类(接口)**存在指定注解，将会被拦截。
+
+注意是声明该方法的类，比如一个接口有一个默认方法，该方法存在指定的注解，如果一个实现类重写了该方法，但是没有加上这个注解，这不会被拦截。另外一个实现类没有重写，调用这个默认方法会被拦截。因为重写后，声明该方法的类从接口变成了该实现类。
+
+使用方式与`@annotation`一致。
+
+#### @target
+
+调用该方法的**对象所在类**存在指定注解，将会被拦截。
+
+与`@within`不一样，强调的是当前实际调用对象所在的类，而不是方法声明的类。
+
+注意：该指示器会把容器中不相关的bean也会生成代理类，虽然执行方法时实际不会拦截，这点实在无法理解Spring为什么这么干。
+
+使用方式与`@annotation`一致。
+
 ### 技巧
+
 #### 获取拦截方法
 ```java
 public Method getGoalMethod(ProceedingJoinPoint jp) {  
