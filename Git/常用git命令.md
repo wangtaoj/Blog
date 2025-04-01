@@ -80,6 +80,20 @@ git checkout -- <file|dir>                                # 将工作区的文�
    * `git reset HEAD file` 利用本地仓库内容恢复暂存区该文件内容
    * `git checkout -- file` 使用暂存区内容恢复工作区内容
 
+### git reset
+
+`git reset`命令有两种用法，命令形式如下所示
+
+`git reset <commit-id> -- <filepath>`，可以是文件也可以是目录，用于修改暂存区，范围是指定的目录或者文件。相当于`git add -- <path>`的反向操作，一个将工作区修改的文件添加到暂存区，一个是使用指定的仓库版本来还原暂存区。
+
+`git reset <commit-id> --hard|soft|mixed`，范围是整个仓库，因此不能指定具体某一个文件或者目录。
+
+首先这三个参数都会将head指向指定的commit-id，但是对于工作区和暂存区的修改有所不一样。
+
+* hard：重置暂存区和工作区，相当于丢弃所有的改动。
+* mixed: 默认值，会重置暂存区，不修改工作区。此时的暂存区和head是一致的，还原的文件会保留到工作区。
+* soft：不会重置暂存区以及工作区，还原的文件会保存到暂存区。
+
 ### 历史
 
 ```bash
