@@ -396,3 +396,120 @@ public class AnnotatedElementUtilsTest {
 }
 ```
 
+### Spring MergedAnnotations
+
+这是一套新的接口，是Spring 5.2出现的新功能，主要聚焦于属性别名(@AliasFor)以及组合注解(元注解关系)，可以替代掉`AnnotatedElementUtils`工具类，目前`AnnotatedElementUtils`大部分方法已经换成`MergedAnnotations`来实现的。
+
+并且此API搜索范围更清晰，通过枚举类`SearchStrategy`来决定。
+
+* DIRECT，直接声明的注解，不会考虑`@Inherited`
+* INHERITED_ANNOTATIONS，所有直接声明的注解以及通过父类继承的注解(`@Inherited`)
+* SUPERCLASS，扩大搜索范围，会从父类上(会递归到最顶层)搜索，此时已不需要`@Inherited`
+
+* TYPE_HIERARCHY，继续扩大搜索范围，会从整个类型体系上搜索，包括父类和接口，相比SUPERCLASS多了接口
+
+测试例子如下
+
+```java
+public class MergedAnnotationsTest {
+
+    private static class MetaAnnotationCase {
+        @GetMapping("/request")
+        @Transactional
+        public void request() {
+        }
+
+        @GetMapping("/getMapping")
+        @RequestMapping("/requestMapping")
+        public void repeat() {
+        }
+    }
+
+    @Test
+    public void testStream() throws NoSuchMethodException {
+        Method requestMethod = MergedAnnotationsTest.MetaAnnotationCase.class.getMethod("request");
+        Class<?>[] res = {GetMapping.class, Transactional.class, RequestMapping.class, Mapping.class};
+        // 获取所有的注解, 包括注解上面的元注解, 会排除标准库中java.lang下面的注解
+        MergedAnnotations mergedAnnotations = MergedAnnotations.from(requestMethod, MergedAnnotations.SearchStrategy.INHERITED_ANNOTATIONS);
+        Class<?>[] classArr = mergedAnnotations.stream().map(MergedAnnotation::getType).toArray(Class[]::new);
+        Assertions.assertArrayEquals(res, classArr);
+
+        // 加上参数, 只会包含指定注解
+        classArr = mergedAnnotations.stream(GetMapping.class).map(MergedAnnotation::getType).toArray(Class[]::new);
+        System.out.println(Arrays.toString(classArr));
+        res = new Class<?>[]{GetMapping.class};
+        Assertions.assertArrayEquals(res, classArr);
+
+        // 加上参数, 只会包含指定注解(元注解也是可以的), 从GetMapping注解上找到RequestMapping
+        classArr = mergedAnnotations.stream(RequestMapping.class).map(MergedAnnotation::getType).toArray(Class[]::new);
+        System.out.println(Arrays.toString(classArr));
+        res = new Class<?>[]{RequestMapping.class};
+        Assertions.assertArrayEquals(res, classArr);
+    }
+
+    @Test
+    public void testIsSeriesMethod() throws NoSuchMethodException {
+        Method requestMethod = MergedAnnotationsTest.MetaAnnotationCase.class.getMethod("request");
+        MergedAnnotations mergedAnnotations = MergedAnnotations.from(requestMethod, MergedAnnotations.SearchStrategy.INHERITED_ANNOTATIONS);
+        Class<?>[] classArr = mergedAnnotations.stream()
+            // 排除掉元注解, 只需要直接存在的注解(是否包含父类或者接口上的注解由SearchStrategy来决定)
+            .filter(MergedAnnotation::isDirectlyPresent)
+            .map(MergedAnnotation::getType).toArray(Class[]::new);
+        Class<?>[] res = {GetMapping.class, Transactional.class};
+        Assertions.assertArrayEquals(res, classArr);
+
+        classArr = mergedAnnotations.stream()
+            // 只需要元注解
+            .filter(MergedAnnotation::isMetaPresent)
+            .map(MergedAnnotation::getType).toArray(Class[]::new);
+        res = new Class<?>[] {RequestMapping.class, Mapping.class};
+        Assertions.assertArrayEquals(res, classArr);
+
+        classArr = mergedAnnotations.stream()
+            // 不排除, isPresent = isDirectlyPresent + isMetaPresent
+            .filter(MergedAnnotation::isPresent)
+            .map(MergedAnnotation::getType).toArray(Class[]::new);
+        res = new Class<?>[] {GetMapping.class, Transactional.class, RequestMapping.class, Mapping.class};;
+        Assertions.assertArrayEquals(res, classArr);
+    }
+
+    @Test
+    public void testGet() throws NoSuchMethodException {
+        Method requestMethod = MergedAnnotationsTest.MetaAnnotationCase.class.getMethod("request");
+        MergedAnnotations mergedAnnotations = MergedAnnotations.from(requestMethod, MergedAnnotations.SearchStrategy.INHERITED_ANNOTATIONS);
+        MergedAnnotation<GetMapping> mergedAnnotation = mergedAnnotations.get(GetMapping.class);
+        Assertions.assertTrue(mergedAnnotation.isPresent());
+
+        // 查找元注解
+        MergedAnnotation<RequestMapping> requestMergedAnnotation = mergedAnnotations.get(RequestMapping.class);
+        Assertions.assertTrue(requestMergedAnnotation.isPresent());
+
+        // 找不到时不会返回null, 返回的是MergedAnnotation#missing()
+        MergedAnnotation<Bean> beanMergedAnnotation = mergedAnnotations.get(Bean.class);
+        Assertions.assertFalse(beanMergedAnnotation.isPresent());
+    }
+
+    /**
+     * 测试注解属性获取, 完整支持@AliasFor注解
+     */
+    @Test
+    public void testGetAttr() throws NoSuchMethodException {
+        Method requestMethod = MergedAnnotationsTest.MetaAnnotationCase.class.getMethod("request");
+        MergedAnnotations mergedAnnotations = MergedAnnotations.from(requestMethod, MergedAnnotations.SearchStrategy.INHERITED_ANNOTATIONS);
+
+        MergedAnnotation<RequestMapping> requestMergedAnnotation = mergedAnnotations.get(RequestMapping.class);
+        Assertions.assertTrue(requestMergedAnnotation.isPresent());
+
+        // @AliasFor注解会生效, 即便value属性给的是@GetMapping, 但是也能从@RequestMapping上获取到
+        String[] value = requestMergedAnnotation.getStringArray("value");
+        Assertions.assertArrayEquals(new String[]{"/request"}, value);
+
+        // value属性别名
+        value = requestMergedAnnotation.getStringArray("path");
+        Assertions.assertArrayEquals(new String[]{"/request"}, value);
+
+    }
+}
+
+```
+
