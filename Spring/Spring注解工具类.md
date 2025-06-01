@@ -235,6 +235,20 @@ public class AnnotationUtilsTest {
         // 判断一个注解类型是不是另外一个注解类型的元注解
         Assert.assertTrue(AnnotationUtils.isAnnotationMetaPresent(GetMapping.class, RequestMapping.class));
     }
+    
+    /**
+     * 是不是一个候选的类
+     * 主要用来做一个简单判断，先过滤掉一定不满足的类，避免后续动作解析，提升性能
+     * 该方法返回false, 那么这个类一定不会存在这个注解, 返回true, 只是有可能存在
+     *
+     * 具体逻辑，如果注解类以java开头，即标准库的注解，直接返回true
+     * 如果注解类不是以java开头, 并且测试类以java开头，即标准库的类，直接返回false，因为标准库肯定不包含第三方注解
+     */
+    @Test
+    public void testIsCandidateClass() {
+        Assertions.assertTrue(AnnotationUtils.isCandidateClass(InheriteClassCase.class, Transactional.class));
+        Assertions.assertFalse(AnnotationUtils.isCandidateClass(String.class, Transactional.class));
+    }
 
     @Test
     public void testAttrAliasFor() throws NoSuchMethodException {
