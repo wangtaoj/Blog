@@ -413,24 +413,129 @@ public class AnnotatedElementUtilsTest {
 ```java
 public class MergedAnnotationsTest {
 
-    private static class MetaAnnotationCase {
+    @Repeatable(Identity.List.class)
+    @Target({ElementType.TYPE, ElementType.METHOD})
+    @Retention(RetentionPolicy.RUNTIME)
+    @Documented
+    private @interface Identity {
+
+        String value();
+
+        @Target({ElementType.TYPE, ElementType.METHOD})
+        @Retention(RetentionPolicy.RUNTIME)
+        @Documented
+        @interface List {
+            Identity[] value();
+        }
+    }
+
+    private interface BaseInterface {
+
+        @Transactional
+        void execute();
+    }
+
+    private static class MetaAnnotationCase implements BaseInterface {
         @GetMapping("/request")
         @Transactional
         public void request() {
         }
 
-        @GetMapping("/getMapping")
-        @RequestMapping("/requestMapping")
+        @Identity("老师")
+        @Identity("父亲")
         public void repeat() {
         }
+
+        @GetMapping("/execute")
+        @Override
+        public void execute() {
+
+        }
+    }
+
+    @Test
+    public void testGet() throws NoSuchMethodException {
+        Method requestMethod = MergedAnnotationsTest.MetaAnnotationCase.class.getMethod("request");
+        MergedAnnotations mergedAnnotations = MergedAnnotations.from(requestMethod, MergedAnnotations.SearchStrategy.INHERITED_ANNOTATIONS);
+        MergedAnnotation<GetMapping> mergedAnnotation = mergedAnnotations.get(GetMapping.class);
+        Assertions.assertTrue(mergedAnnotation.isPresent());
+
+        // 查找元注解
+        MergedAnnotation<RequestMapping> requestMergedAnnotation = mergedAnnotations.get(RequestMapping.class);
+        Assertions.assertTrue(requestMergedAnnotation.isPresent());
+
+        // 找不到时不会返回null, 返回的是MergedAnnotation#missing()
+        MergedAnnotation<Bean> beanMergedAnnotation = mergedAnnotations.get(Bean.class);
+        Assertions.assertFalse(beanMergedAnnotation.isPresent());
+    }
+
+    /**
+     * 测试其他get方法
+     * getDistance
+     * getAggregateIndex
+     * getSource
+     * getMetaSource
+     * getRoot
+     * getMetaTypes
+     */
+    @Test
+    public void testOtherGetMethod() throws NoSuchMethodException {
+        Method requestMethod = MergedAnnotationsTest.MetaAnnotationCase.class.getMethod("execute");
+        MergedAnnotations mergedAnnotations = MergedAnnotations.from(requestMethod, MergedAnnotations.SearchStrategy.TYPE_HIERARCHY);
+        MergedAnnotation<GetMapping> getMappingMergedAnnotation = mergedAnnotations.get(GetMapping.class);
+        MergedAnnotation<Mapping> mappingMergedAnnotation = mergedAnnotations.get(Mapping.class);
+        MergedAnnotation<Transactional> transactionalMergedAnnotation = mergedAnnotations.get(Transactional.class);
+
+        // 直接注解就是0
+        Assertions.assertEquals(0, getMappingMergedAnnotation.getDistance());
+        // @Mapping是@RequestMapping的元注解, 而@RequestMapping是@GetMapping的元注解, 因此为2
+        Assertions.assertEquals(2, mappingMergedAnnotation.getDistance());
+        Assertions.assertEquals(0, transactionalMergedAnnotation.getDistance());
+
+        // getAggregateIndex获取的继承体系上的声明层级
+        Assertions.assertEquals(0, getMappingMergedAnnotation.getAggregateIndex());
+        Assertions.assertEquals(0, mappingMergedAnnotation.getAggregateIndex());
+        // @Transactional是在接口上声明的, 因此为1
+        Assertions.assertEquals(1, transactionalMergedAnnotation.getAggregateIndex());
+
+        // getSource获取的是注解声明时的载体
+        Assertions.assertEquals(requestMethod, getMappingMergedAnnotation.getSource());
+        // 元注解@Mapping的Source和根注解@GetMapping是一致的
+        Assertions.assertEquals(requestMethod, mappingMergedAnnotation.getSource());
+        // @Transactional是在接口上声明的
+        Assertions.assertEquals(
+            MergedAnnotationsTest.BaseInterface.class.getMethod("execute"),
+            transactionalMergedAnnotation.getSource()
+        );
+
+        // getMetaSource获取的是元注解声明的目标注解, 直接注解返回null
+        Assertions.assertNull(getMappingMergedAnnotation.getMetaSource());
+        // @Mapping注解是在@RequestMapping注解声明的
+        Assertions.assertEquals(RequestMapping.class, Objects.requireNonNull(mappingMergedAnnotation.getMetaSource()).getType());
+
+        // getRoot获取的是元注解声明的根注解, 直接注解返回自己
+        Assertions.assertEquals(GetMapping.class, getMappingMergedAnnotation.getRoot().getType());
+        // @Mapping注解是在@RequestMapping注解声明的, @RequestMapping注解是在GetMapping注解声明的
+        Assertions.assertEquals(GetMapping.class, mappingMergedAnnotation.getRoot().getType());
+
+        // getMetaTypes获取的是自己到根注解之间所有的注解类型
+        Assertions.assertEquals(GetMapping.class, getMappingMergedAnnotation.getMetaTypes().get(0));
+        List<Class<? extends Annotation>> metaTypes = mappingMergedAnnotation.getMetaTypes();
+        Assertions.assertEquals(GetMapping.class, metaTypes.get(0));
+        Assertions.assertEquals(RequestMapping.class, metaTypes.get(1));
+        Assertions.assertEquals(Mapping.class, metaTypes.get(2));
+
     }
 
     @Test
     public void testStream() throws NoSuchMethodException {
         Method requestMethod = MergedAnnotationsTest.MetaAnnotationCase.class.getMethod("request");
         Class<?>[] res = {GetMapping.class, Transactional.class, RequestMapping.class, Mapping.class};
-        // 获取所有的注解, 包括注解上面的元注解, 会排除标准库中java.lang下面的注解
         MergedAnnotations mergedAnnotations = MergedAnnotations.from(requestMethod, MergedAnnotations.SearchStrategy.INHERITED_ANNOTATIONS);
+        /*
+         * 获取所有的注解, 包括注解上面的元注解, 会排除标准库中java.lang下面的注解
+         * 排序行为: 先根据aggregateIndex升序，再根据distance升序
+         */
         Class<?>[] classArr = mergedAnnotations.stream().map(MergedAnnotation::getType).toArray(Class[]::new);
         Assertions.assertArrayEquals(res, classArr);
 
@@ -469,24 +574,8 @@ public class MergedAnnotationsTest {
             // 不排除, isPresent = isDirectlyPresent + isMetaPresent
             .filter(MergedAnnotation::isPresent)
             .map(MergedAnnotation::getType).toArray(Class[]::new);
-        res = new Class<?>[] {GetMapping.class, Transactional.class, RequestMapping.class, Mapping.class};;
+        res = new Class<?>[] {GetMapping.class, Transactional.class, RequestMapping.class, Mapping.class};
         Assertions.assertArrayEquals(res, classArr);
-    }
-
-    @Test
-    public void testGet() throws NoSuchMethodException {
-        Method requestMethod = MergedAnnotationsTest.MetaAnnotationCase.class.getMethod("request");
-        MergedAnnotations mergedAnnotations = MergedAnnotations.from(requestMethod, MergedAnnotations.SearchStrategy.INHERITED_ANNOTATIONS);
-        MergedAnnotation<GetMapping> mergedAnnotation = mergedAnnotations.get(GetMapping.class);
-        Assertions.assertTrue(mergedAnnotation.isPresent());
-
-        // 查找元注解
-        MergedAnnotation<RequestMapping> requestMergedAnnotation = mergedAnnotations.get(RequestMapping.class);
-        Assertions.assertTrue(requestMergedAnnotation.isPresent());
-
-        // 找不到时不会返回null, 返回的是MergedAnnotation#missing()
-        MergedAnnotation<Bean> beanMergedAnnotation = mergedAnnotations.get(Bean.class);
-        Assertions.assertFalse(beanMergedAnnotation.isPresent());
     }
 
     /**
@@ -507,7 +596,41 @@ public class MergedAnnotationsTest {
         // value属性别名
         value = requestMergedAnnotation.getStringArray("path");
         Assertions.assertArrayEquals(new String[]{"/request"}, value);
+    }
 
+    /**
+     * 测试可以重复的注解
+     */
+    @Test
+    public void testRepeatable() throws NoSuchMethodException {
+        Method requestMethod = MergedAnnotationsTest.MetaAnnotationCase.class.getMethod("repeat");
+        MergedAnnotations mergedAnnotations = MergedAnnotations.from(requestMethod, MergedAnnotations.SearchStrategy.DIRECT);
+
+        // 只能拿到最近的那一个
+        MergedAnnotation<Identity> identityMergedAnnotation = mergedAnnotations.get(Identity.class);
+        Assertions.assertEquals("老师", identityMergedAnnotation.getString("value"));
+
+        // 获取不到容器注解
+        MergedAnnotation<Identity.List> identityListMergedAnnotation = mergedAnnotations.get(Identity.List.class);
+        Assertions.assertFalse(identityListMergedAnnotation.isPresent());
+
+        // 关闭可重复行为, 默认是RepeatableContainers.standardRepeatables
+        mergedAnnotations = MergedAnnotations.from(
+            requestMethod,
+            MergedAnnotations.SearchStrategy.DIRECT,
+            RepeatableContainers.none()
+        );
+
+        // 此时只能拿到容器注解
+        identityMergedAnnotation = mergedAnnotations.get(Identity.class);
+        Assertions.assertFalse(identityMergedAnnotation.isPresent());
+
+        identityListMergedAnnotation = mergedAnnotations.get(Identity.List.class);
+        Assertions.assertTrue(identityListMergedAnnotation.isPresent());
+
+        MergedAnnotation<Identity>[] values = identityListMergedAnnotation.getAnnotationArray("value", Identity.class);
+        Assertions.assertEquals("老师", values[0].getString("value"));
+        Assertions.assertEquals("父亲", values[1].getString("value"));
     }
 }
 
