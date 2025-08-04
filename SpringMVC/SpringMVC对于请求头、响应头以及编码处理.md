@@ -158,6 +158,8 @@ public void hello(HttpServletResponse response) throws IOException {
 }
 ```
 
+注: **该问题也可以在spring github上找到issue，[链接](https://github.com/spring-projects/spring-framework/issues/32339)，并且在6.2.0版本中修复。**
+
 **因此如果不是自己直接使用HttpServletResponse的输出流来输出数据，那么务必使用HttpEntity方式来设置该请求头。**
 
 #### 原生Servlet写法
