@@ -94,7 +94,69 @@ public OutputStream getBody() throws IOException {
 
 ### Content-Type响应头以及编码
 
-Content-Type响应头非常重要，告知了客户端响应体数据类型以及编码方式，在SpringMVC开发模式中正常情况下是不用开发者来设置的，但是如果通过Servlet API来设置这个响应头会出现一些诡异的现象而掉进坑里。
+Content-Type响应头非常重要，告知了客户端响应体数据类型以及编码方式，在SpringMVC开发模式中正常情况下是不用开发者来设置的，但是如果通过Servlet API来设置这个响应头会出现一些诡异的现象而掉进坑里，我认为这里是Spring实现上的bug导致的。这里简要分析下源码以及bug产生原因。
+
+`AbstractMessageConverterMethodProcessor.writeWithMessageConverters`方法中会获取用户设置的`Content-Type`头部。
+
+```java
+/**
+ * 精简代码
+ */
+void writeWithMessageConverters() {
+    MediaType contentType = outputMessage.getHeaders().getContentType();
+}
+
+```
+
+HttpHeaders.java
+
+```java
+public MediaType getContentType() {
+    // getFirst方法被重写了
+    String value = getFirst(CONTENT_TYPE);
+    return (StringUtils.hasLength(value) ? MediaType.parseMediaType(value) : null);
+}
+```
+
+ServletServerHttpResponse.ServletResponseHttpHeaders.java
+
+```java
+@Override
+@Nullable
+public String getFirst(String headerName) {
+    if (headerName.equalsIgnoreCase(CONTENT_TYPE)) {
+        // Content-Type is written as an override so check super first
+        // 如果通过HttpEntity方式设置的，这里可以拿到值
+        String value = super.getFirst(headerName);
+        // 通过Servlet Api设置的值
+        return (value != null ? value : servletResponse.getHeader(headerName));
+    }
+    else {
+        String value = servletResponse.getHeader(headerName);
+        return (value != null ? value : super.getFirst(headerName));
+    }
+}
+```
+
+从代码中可以看到Spring是想过要从`HttpServletResponse`对象中获取`Content-Type`头的，但是不幸的是它的getHeader方法对于`Content-Type`头部获取是有限制的，必须等到把请求数据写出后才能获取到，在前面也说过设置`Content-Type`头部时其实调用的是`setContentType`方法，即便通过`setHeader`方法来设置时，内部也是调用的`setContentType`方法，需要使用`getContentType`方法才能正确获取到值。
+
+看一个例子
+
+```java
+@GetMapping("/hello")
+public void hello(HttpServletResponse response) throws IOException {
+    response.setHeader(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_HTML_VALUE);
+    // null
+    System.out.println(response.getHeader(HttpHeaders.CONTENT_TYPE));
+    // 可以拿到值
+    System.out.println(response.getContentType());
+    response.getOutputStream().write("Hello Spring Boot 3".getBytes());
+    // 将数据真实写出, 或者这里也可以调用close方法
+    response.getOutputStream().flush();
+    // 可以拿到值
+    System.out.println(response.getHeader(HttpHeaders.CONTENT_TYPE));
+}
+```
 
 **因此如果不是自己直接使用HttpServletResponse的输出流来输出数据，那么务必使用HttpEntity方式来设置该请求头。**
 
