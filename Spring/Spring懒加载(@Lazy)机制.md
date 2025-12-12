@@ -125,10 +125,13 @@ public void lazyTest() {
 输出结果:
 
 =======lazyBean init=======
+
 ======commonBean init=======
 
 =========lazy test=========
+
 class com.wangtao.springboot3.lazy.LazyBean
+
 beanName: lazyBean, value: class com.wangtao.springboot3.lazy.LazyBean
 
 可以看到即便LazyBean已经被@Lazy标注，但是由于被CommonBean依赖注入，而导致直接初始化了。
@@ -160,8 +163,11 @@ public class CommonBean {
 ======commonBean init=======
 
 =========lazy test=========
+
 class com.wangtao.springboot3.lazy.LazyBean$$SpringCGLIB$$0
+
 =======lazyBean init=======
+
 beanName: lazyBean, value: class com.wangtao.springboot3.lazy.LazyBean
 
 可以看到在手动调用getBeansOfType方法后才执行了初始化
