@@ -86,13 +86,34 @@ logback.xml是logback日志框架默认的配置文件，由logback自己加载�
 
   <!-- 根据spring激活的profile来生效配置 -->
   <springProfile name="dev">
-    <Logger name="com.waston.app" level="debug">
+    <logger name="com.waston.app" level="debug">
   </springProfile>
 
   <springProfile name="dev">
     <Logger name="com.waston.app" level="info">
   </springProfile>
 </configuration>
+```
+
+注: SpringBoot 2.x版本扩展语法对log4j2不支持，需要引入log4j2扩展语法的依赖才行。Spring Boot 3.x版本官方支持，无需引入额外依赖。
+
+```xml
+<dependency>
+  <groupId>org.apache.logging.log4j</groupId>
+  <artifactId>log4j-spring-boot</artifactId>
+  <scope>runtime</scope>
+</dependency>
+```
+
+```xml
+<Properties>
+  <!-- 从Spring环境中读取配置 -->
+  <Property name="applicationName">${spring:spring.application.name:-default}</Property>
+</Properties>
+
+<SpringProfile name="dev">
+  <Logger name="com.waston.app" level="debug">
+</SpringProfile>
 ```
 
 ### JVM系统属性
