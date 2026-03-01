@@ -202,3 +202,6 @@ public void postProcessBeforeDestruction(Object bean, String beanName) {
 }
 ```
 
+更新：
+
+将这个bug提交给Spring官方后，将会在spring-context 7.0.6以及6.2.17修复，[issue链接](https://github.com/spring-projects/spring-framework/issues/36404)
