@@ -186,3 +186,9 @@ public class C {
 ```
 
 在上述例子中，容器实际只注册了AppConfig、A、C。因为B是一个`ImportSelector`实例，不会被注册到容器中，不过B通过`selectImports`方法把C注册进来了。
+
+### ObjectProvider
+
+* ObjectProvider在注入时即使没有对应的bean，也不会报错，同样也可搭配`@Qualifier`注解注入指定名字的bean
+* getIfAvailable方法在有多个候选bean时会抛出`NoUniqueBeanDefinitionException`异常
+* getIfUnique方法在有多个候选bean时会返回null
