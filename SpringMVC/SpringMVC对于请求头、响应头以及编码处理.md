@@ -377,16 +377,15 @@ public OutputStream getBody() throws IOException {
     return this.servletResponse.getOutputStream();
 }
 
-/**
- * 可以看到会直接覆盖Content-Type以及charset，也就是自己设置的没有用
- */
 private void writeHeaders() {
     if (!this.headersWritten) {
         getHeaders().forEach((headerName, headerValues) -> {
+            // 对于Content-Type, addHeader底层会直接调用setContentType, 也就是说自己设置的会被覆盖掉
             for (String headerValue : headerValues) {
                 this.servletResponse.addHeader(headerName, headerValue);
             }
         });
+        // 对于Content-Type这里其实没有用, 上面已经设置了, getContentType就不会为null了
         // HttpServletResponse exposes some headers as properties: we should include those if not already present
         if (this.servletResponse.getContentType() == null && this.headers.getContentType() != null) {
             this.servletResponse.setContentType(this.headers.getContentType().toString());
