@@ -159,22 +159,21 @@ FillMetaObjectHandler需要注入到Spring容器中，可以通过 `@Component` 
 - 在 `update(Wrapper<T> updateWrapper)` 时不会自动填充，需要手动赋值字段条件。
 
 * `delete`操作在符合逻辑删除时(变成了update)也会自动填充。
+
 * 对于自定义方法，多参数时参数名必须是et
 
-       ```java
-       // 单参数
-       @Update("update user set age = #{age}, update_time = #{updateTime} where id = #{id}")
-       int updateAgeById(User user);
-       
-       /*
-        * 单参数带@Param注解或者多参数，参数名称为et的才会被填充
-        * 因为带@Param，底层真实的参数对象变成了map，需要一个标记来确定到底要填充map中的哪一个参数
-        */
-       @Update("update user set age = #{et.age}, update_time = #{et.updateTime} where id = #{et.id}")
-       int updateAgeByIdWithParamName(@Param(Constants.ENTITY) User user);
-       ```
-
-
+  ```java
+  // 单参数
+  @Update("update user set age = #{age}, update_time = #{updateTime} where id = #{id}")
+  int updateAgeById(User user);
+  
+  /*
+   * 单参数带@Param注解或者多参数，参数名称为et的才会被填充
+   * 因为带@Param，底层真实的参数对象变成了map，需要一个标记来确定到底要填充map中的哪一个参数
+   */
+  @Update("update user set age = #{et.age}, update_time = #{et.updateTime} where id = #{et.id}")
+  int updateAgeByIdWithParamName(@Param(Constants.ENTITY) User user);
+  ```
 
 ### 逻辑删除
 
