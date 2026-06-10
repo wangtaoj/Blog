@@ -18,6 +18,127 @@
 
 * JVM已提交的内存一开始其实都是虚拟内存，并不会实际就占用操作系统内存，只是这块内存，操作系统会预留给JVM。因此通过top命令或者任务管理器看java进程占用的内存时，其实很少。但是一旦真实分配过内存后，就会开始占用操作系统的内存了，即便后面发生了垃圾回收，jvm内部的堆内存降低，操作系统看java进程占用的内存也不会变少，因为jvm通常是不会把回收的内存归还给操作系统的。
 
+### 常用启动参数
+
+* 最大堆：-Xmx4g  -Xmx128m
+
+* 初始堆：-Xms4g -Xms128m
+
+* k8s容器环境配置初始堆以及最大堆，不要固定写死，不然无法根据k8s来弹性扩容，使用如下参数
+
+  -XX:InitialRAMPercentage=70 -XX:MaxRAMPercentage=70，即取容器内存的70%
+
+  注: JDK8u191+版本才比较成熟
+
+* -XX:+HeapDumpOnOutOfMemoryError：发生内存溢出时自动导出内存映射文件
+
+* -XX:HeapDumpPath：指定内存溢出时导出内存映射文件的位置，一般与-XX:+HeapDumpOnOutOfMemoryError搭配使用
+
+  使用形式有两种
+
+  只指定目录：XX:HeapDumpPath=D:/dump，则文件名会自动生成，形如java_pid1234.hprof，其中1234为java进程的pid
+
+  指定全路径：XX:HeapDumpPath=D:/dump/dump.hprof
+
+### 常用工具
+
+#### jinfo
+
+##### 查看所有生效的jvm参数
+
+`jinfo -flags 1234`
+
+##### 查看具体某一个参数
+
+`jinfo -flag MaxHeapSize 1234`
+
+#### jmap	
+
+##### dump所有对象
+
+`jmap -dump:format=b,file=D:\dump\java_pid1234.hprof 1234 ` 其中1234为pid
+
+不会触发full gc，但是也会stw。没有被回收的垃圾对象也会被包含在其中。
+
+##### 只dump存活对象
+
+`jmap -dump:live,format=b,file=D:\dump\java_pid1234.hprof 1234`
+
+这样会先full gc，再dump。使得文件更小，垃圾对象被清理，更容器分析真正泄漏对象。但是stw时间会更久，生产环境高峰期慎用。
+
+##### 查看堆信息
+
+`jmap -heap pid`
+
+可以看到详细的堆信息，最大堆，初始堆，老年代(old)、年轻代(eden、survivor)容量信息
+
+##### 查看对象数量排行
+
+`jmap -histo 12345`
+
+`jmap -histo:live 12345`（只统计存活对象，会触发full gc）
+
+#### jstack
+
+`jstack 12345`
+
+#### jcmd
+
+jcmd整合了jinfo、jmap、jstack、jps等命令的功能，jdk高版本主推工具。底层attach机制更现代化，更先进，推荐使用。
+
+##### 列出所有可用的子命令
+
+`jcmd pid help`，pid为具体的java进程id
+
+若pid指定为0，相当于先找出所有的java进程id，挨个调用`jcmd pid help`
+
+##### 子命令帮助
+
+`jcmd pid help GC.heap_dump`，pid为具体的java进程id
+
+##### 列出java进程(jps)
+
+`jcmd -l`
+
+##### dump内存文件(jmap -dump)
+
+`jcmd 12345 GC.heap_dump heap.hprof`，dump存活对象，会触发full gc
+
+`jcmd 12345 GC.heap_dump -all heap.hprof`，dump所有对象，包括不可达对象
+
+##### 查看堆信息(jmap -heap)
+
+`jcmd 12345 GC.heap_info`
+
+##### 查看对象排行(jmap -histo)
+
+`jcmd 12345 GC.class_histogram | head -n 10` 取前10名，只统计存活对象，会触发full gc
+
+`jcmd 12345 GC.class_histogram -all` 统计所有对象，包括不可达对象。
+
+输出格式
+
+   num     #instances         #bytes  class name
+
+   1:         53616        6220928  [C
+   2:         20277        1784376  java.lang.reflect.Method
+   3:         53463        1283112  java.lang.String
+   4:          9860        1091680  java.lang.Class
+   5:         28646         916672  java.util.concurrent.ConcurrentHashMap$Node
+   6:          3542         611448  [B
+
+依次为序号、实例数量、实例总字节数、类名
+
+按照(bytes)实例总字节数降序排列。
+
+##### 查看线程信息(jstack)
+
+`jcmd 12345 Thread.print`
+
+##### 查看java进程启动的命令行参数
+
+`jcmd 12345 VM.command_line`
+
 ### 垃圾回收相关概念
 
 **并行**：并行描述的是多条垃圾收集器线程之间的关系，说明同一时间有多条这样的线程在协同工作，通常默认此时用户线程是处于等待状态。
