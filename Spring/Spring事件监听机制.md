@@ -212,7 +212,7 @@ public ResolvableType getResolvableType() {
 
 而`IntegerListener`的泛型参数`ResolvableType=org.springframework.context.PayloadApplicationEvent<java.lang.Integer>`
 
-而`StringListener`的泛型参数``ResolvableType=org.springframework.context.PayloadApplicationEvent<java.lang.String>`
+而`StringListener`的泛型参数`ResolvableType=org.springframework.context.PayloadApplicationEvent<java.lang.String>`
 
 此时`ResolvableType=org.springframework.context.PayloadApplicationEvent<?>`不能赋值给`ResolvableType=org.springframework.context.PayloadApplicationEvent<java.lang.Integer>`，也不能赋值给`ResolvableType=org.springframework.context.PayloadApplicationEvent<java.lang.String>`。也就是说没有任何监听器执行了。
 
@@ -242,19 +242,19 @@ ResolvableType.forInstance(event)
 
 * 普通的`ApplicationListener`接口，则解析`ApplicationListener`中泛型参数对应的`ResolvableType`，判断`ApplicationEvent`的`ResolvableType`是否可以赋值给这个泛型参数的`ResolvableType`。
 
-       ```java
-       /**
-        * 要解析出泛型参数，必须要有一个具体的类来实现拥有泛型参数的接口或类
-        * 通过Class.getGenericSuperclass或者getGenericInterfaces来拿到父类或者接口中的泛型类型
-        */
-       public class IntegerListener implements ApplicationListener<Integer> {
-           
-           @Override
-           public void onApplicationEvent(Integer event) {
-               
-           }
-       }
-       ```
+```java
+/**
+* 要解析出泛型参数，必须要有一个具体的类来实现拥有泛型参数的接口或类
+* 通过Class.getGenericSuperclass或者getGenericInterfaces来拿到父类或者接口中的泛型类型
+*/
+public class IntegerListener implements ApplicationListener<Integer> {
+
+   @Override
+   public void onApplicationEvent(Integer event) {
+
+   }
+}
+```
 
 
 
