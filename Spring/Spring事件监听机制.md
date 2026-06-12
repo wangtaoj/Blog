@@ -192,4 +192,69 @@ public class StringListener implements ApplicationListener<PayloadApplicationEve
 ac.publishEvent(new PayloadApplicationEvent<>(this, "string"));
 ```
 
-在该例子中，**虽然Java中由于泛型擦除`PayloadApplicationEvent<Integer>`和`PayloadApplicationEvent<String>`是同一个类，但是只会触发`StringListener`**。因为Spring内部会去解析Listener的`ResolvableType`，并不是简单比较类型。
+在该例子中，**虽然Java中由于泛型擦除`PayloadApplicationEvent<Integer>`和`PayloadApplicationEvent<String>`是同一个类，但是只会触发`StringListener`**。因为Spring内部会去解析Listener的`ResolvableType`以及Event的`ResolvableType`。然后判断Event的`ResolvableType`是否可以赋值给Listener的`ResolvableType`。另外`PayloadApplicationEvent`能够被解析出带有完整泛型的`ResolvableType`，是因为实现了`ResolvableTypeProvider`接口。
+
+```java
+@Override
+public ResolvableType getResolvableType() {
+    // 根据payload的类型来解析出完整的带泛型的ResolvableType
+    return ResolvableType.forClassWithGenerics(getClass(), this.payloadType);
+}
+```
+
+对于`ac.publishEvent(new PayloadApplicationEvent<>(this, "string"))`
+
+解析出来的`ResolvableType=org.springframework.context.PayloadApplicationEvent<java.lang.String>`
+
+若没有实现`ResolvableTypeProvider`接口
+
+则解析出来的`ResolvableType=org.springframework.context.PayloadApplicationEvent<?>`
+
+而`IntegerListener`的泛型参数`ResolvableType=org.springframework.context.PayloadApplicationEvent<java.lang.Integer>`
+
+而`StringListener`的泛型参数``ResolvableType=org.springframework.context.PayloadApplicationEvent<java.lang.String>`
+
+此时`ResolvableType=org.springframework.context.PayloadApplicationEvent<?>`不能赋值给`ResolvableType=org.springframework.context.PayloadApplicationEvent<java.lang.Integer>`，也不能赋值给`ResolvableType=org.springframework.context.PayloadApplicationEvent<java.lang.String>`。也就是说没有任何监听器执行了。
+
+### 如何根据ApplicationEvent去找对应的ApplicationListener
+
+第一步：先解析`ApplicationEvent`的`ResolvableType`
+
+SimpleApplicationEventMulticaster.multicastEvent()
+
+```java
+/**
+ * 如果event有实现ResolvableTypeProvider接口，则调用ResolvableTypeProvider的getResolvableType方法
+ * 因此如果特殊逻辑或者泛型需求, 事件可以实现该接口
+ * 由于泛型擦除，泛型类是无法在运行时拿到具体的泛型类型的，因此可以实现ResolvableTypeProvider接口
+ * 人为告诉Spring具体的泛型类型。
+ * 参考: PayloadApplicationEvent
+ */
+ResolvableType.forInstance(event)
+```
+
+第二步：判断`ApplicationListener`是否支持`ApplicationEvent`的`ResolvableType`
+
+分为下面3种情况，该逻辑封装在`GenericApplicationListenerAdapter.supportsEventType`中
+
+* 若为`GenericApplicationListener`接口，直接通过`boolean supportsEventType(ResolvableType eventType)`方法判断
+* 若为`SmartApplicationListener`接口，直接通过`boolean supportsEventType(Class<? extends ApplicationEvent> eventType)`判断
+
+* 普通的`ApplicationListener`接口，则解析`ApplicationListener`中泛型参数对应的`ResolvableType`，判断`ApplicationEvent`的`ResolvableType`是否可以赋值给这个泛型参数的`ResolvableType`。
+
+       ```java
+       /**
+        * 要解析出泛型参数，必须要有一个具体的类来实现拥有泛型参数的接口或类
+        * 通过Class.getGenericSuperclass或者getGenericInterfaces来拿到父类或者接口中的泛型类型
+        */
+       public class IntegerListener implements ApplicationListener<Integer> {
+           
+           @Override
+           public void onApplicationEvent(Integer event) {
+               
+           }
+       }
+       ```
+
+
+
