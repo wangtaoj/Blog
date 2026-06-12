@@ -84,7 +84,13 @@ public class AsyncEventListener implements DisposableBean {
 
     @SuppressWarnings("unchecked")
     private void dispatchAsyncEvent(AsyncEvent<?> asyncEvent) {
-        // 会根据实际的asyncEvent实例来判断交给哪一个handler执行
+        /*
+         * 会根据实际的asyncEvent实例来判断交给哪一个handler执行
+         * 第一个参数: 必须是拥有泛型参数的class，可以是类，也可是接口
+         * 第二个参数: 具体的实例对象列表，它们所属的类必须继承或者实现第一个参数class
+         * 底层原理: Class.getGenericSuperclass或者getGenericInterfaces
+         * 通过这两个方法可以拿到具体的泛型参数类型了，这样子就可以根据传入的方法参数asyncEvent来进行判断了
+         */
         LambdaSafe.callbacks(AsyncEventHandler.class, asyncEventHandlerList, asyncEvent)
             .invoke(asyncEventHandler -> asyncEventHandler.handle(asyncEvent));
     }
