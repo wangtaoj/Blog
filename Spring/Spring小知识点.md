@@ -192,3 +192,113 @@ public class C {
 * ObjectProvider在注入时即使没有对应的bean，也不会报错，同样也可搭配`@Qualifier`注解注入指定名字的bean
 * getIfAvailable方法在有多个候选bean时会抛出`NoUniqueBeanDefinitionException`异常
 * getIfUnique方法在有多个候选bean时会返回null
+
+### DefaultSingletonBeanRegistry
+
+#### dependentBeanMap vs dependenciesForBeanMap
+
+dependentBeanMap：记录的是一个bean被哪些其他bean所依赖，谁依赖了我
+
+dependenciesForBeanMap：记录的是一个bean依赖了哪些其他bean，我依赖了谁
+
+```java
+@DependsOn("dependentBean2")
+@Component
+public class DependentBean1 {
+
+    @Autowired
+    private DependentBean3 dependentBean3;
+}
+
+
+@Component
+public class DependentBean2 {
+}
+
+@Component
+public class DependentBean3 {
+}
+
+@SpringBootTest
+public class SpringBootTestApplicationTests {
+
+    @Autowired
+    private ConfigurableApplicationContext applicationContext;
+
+    @Test
+    public void contextLoads() {
+        /*
+         * [dependentBean2, dependentBean3]
+         * 常见的注入以及DependsOn
+         *
+         * 注意: 需要ConfigurableApplicationContext才有getBeanFactory()方法
+         */
+        String[] res = applicationContext.getBeanFactory().getDependenciesForBean("dependentBean1");
+        System.out.println(Arrays.toString(res));
+        
+        // [dependentBean1]
+        res = applicationContext.getBeanFactory().getDependentBeans("dependentBean2");
+        System.out.println(Arrays.toString(res));
+    }
+
+}
+```
+
+### 循环引用依赖
+
+#### 为什么需要使用3个Map？
+
+答：为了保证没有循环依赖的bean在创建代理时不会提前，还是在BeanPostProcessor的postProcessAfterInitialization方法阶段创建。
+
+此时必需要有一个工厂方法的Map，如果发生循环引用，则调用这个工厂方法获取代理对象(循环引用必定导致代理提前创建)。无循环引用，因为放的只是一个工厂方法，不会提前创建。
+
+那为啥需要3个，简单实现确实只需要两个Map即可，一个Map存成品对象，一个Map存工厂方法。但是考虑到复杂的循环引用场景，比如A 依赖于 B，B 依赖于A和C、而C有依赖于A时，假设A先被初始化，那么工厂方法会被B以及C先后两次调用，这样子的话，必须要由创建代理的基础类保证每次调用拿到的是同一个代理对象才行，否则B和C注入的A代理就不一致了。所以需要再加入一个Map来存工厂方法创建出来的半成品。
+
+#### 循环依赖最终对象检查
+
+对象创建完成后，会进行一致性检查.
+
+AbstractAutowireCapableBeanFactory.doCreateBean()
+
+```java
+// 打开了允许循环引用开关
+if (earlySingletonExposure) {
+    Object earlySingletonReference = getSingleton(beanName, false);
+    // 这里earlySingletonReference不等于null，必定发生了循环引用，工厂方法被调用了才会有值
+    if (earlySingletonReference != null) {
+        /*
+         * bean是原始对象, exposedObject经过了层层代理返回的对象
+         * 这里其实即便发生了aop代理，也是相等的。
+         * 因为AbstractAutoProxyCreator的postProcessAfterInitialization
+         * 方法有做判断，如果发现getEarlyBeanReference方法已经创建代理了，就不会再次创建代理，直接跳过了。
+         * 
+         * 但是若有别的BeanPostProcessor在没有判断时创建了代理，就会导致exposedObject和bean不是同一个对象了。
+         * 走到else分支，就会报错了。
+         * 比如@async注解标注的对象，就不是由AbstractAutoProxyCreator创建的代理对象，循环依赖时就会报下面错误。
+         */
+        if (exposedObject == bean) {
+            exposedObject = earlySingletonReference;
+        }
+        else if (!this.allowRawInjectionDespiteWrapping && hasDependentBean(beanName)) {
+            String[] dependentBeans = getDependentBeans(beanName);
+            Set<String> actualDependentBeans = new LinkedHashSet<>(dependentBeans.length);
+            for (String dependentBean : dependentBeans) {
+                if (!removeSingletonIfCreatedForTypeCheckOnly(dependentBean)) {
+                    actualDependentBeans.add(dependentBean);
+                }
+            }
+            if (!actualDependentBeans.isEmpty()) {
+                throw new BeanCurrentlyInCreationException(beanName,
+                        "Bean with name '" + beanName + "' has been injected into other beans [" +
+                        StringUtils.collectionToCommaDelimitedString(actualDependentBeans) +
+                        "] in its raw version as part of a circular reference, but has eventually been " +
+                        "wrapped. This means that said other beans do not use the final version of the " +
+                        "bean. This is often the result of over-eager type matching - consider using " +
+                        "'getBeanNamesForType' with the 'allowEagerInit' flag turned off, for example.");
+            }
+        }
+    }
+}
+```
+
+**若对象发生代理行为，并且代理不是通过AbstractAutoProxyCreator(其实是SmartInstantiationAwareBeanPostProcessor接口)创建的，那么是不支持循环引用的**
