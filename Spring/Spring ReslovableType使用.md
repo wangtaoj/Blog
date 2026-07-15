@@ -120,6 +120,7 @@ public class ResolvableTypeTest {
 | 方法                                           | 说明                                                         |
 | ---------------------------------------------- | ------------------------------------------------------------ |
 | Class<?> resolve()                             | 返回擦除后的原生类型                                         |
+| Type getType()                                 | 返回Java Type实例                                            |
 | ResolvableType getGeneric(int... indexes)      | 递归获取指定位置的泛型参数                                   |
 | ResolvableType[] getGenerics()                 | 获取泛型参数数组                                             |
 | ResolvableType getSuperType()                  | 父类对应的 `ResolvableType`，已包含子类绑定的实参            |
@@ -154,6 +155,9 @@ public class ResolvableTypeTest {
     public void testGetApi() {
         // 指定泛型
         ResolvableType type = ResolvableType.forClassWithGenerics(PayloadEvent.class, String.class);
+        Assertions.assertEquals("com.wangtao.springboottest.ResolvableTypeTest$PayloadEvent<java.lang.String>", type.toString());
+        // 获取Java Type类型
+        Assertions.assertEquals("com.wangtao.springboottest.ResolvableTypeTest$PayloadEvent<java.lang.String>", type.getType().toString());
         // 获取原始类型
         Assertions.assertEquals(PayloadEvent.class, type.resolve());
         // 获取第一个位置的泛型参数
