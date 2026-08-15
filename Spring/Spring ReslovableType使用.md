@@ -183,3 +183,91 @@ public class ResolvableTypeTest {
 }
 ```
 
+### 一些注意的点
+
+#### 关于getType
+
+在以下场景中，getType拿到的类型仍然是T，需要自己手动去构建
+
+```java
+public static class A<T> {
+
+}
+
+public static class B<T> extends A<T> {
+
+}
+
+public static class C extends B<List<Integer>> {
+
+}
+
+@Test
+public void testApi() {
+    ResolvableType resolvableType = ResolvableType.forClass(C.class).as(A.class);
+    // com.wangtao.springboot3.ResolvableTypeTest$A<java.util.List<java.lang.Integer>>
+    System.out.println(resolvableType);
+    // com.wangtao.springboot3.ResolvableTypeTest$A<T>
+    System.out.println(resolvableType.getType().getTypeName());
+	// T
+    System.out.println(resolvableType.getGeneric(0).getType().getTypeName());
+}
+```
+
+as方法通过子类一层一层调用Class.getGenericSuperclass或者getGenericInterfaces去获取type属性，在这个例子中就是
+
+调用C.class的getGenericSuperclass获取到type为`ResolvableTypeTest$B<java.util.List<java.lang.Integer>>`，然后再调用B.class的getGenericSuperclass获取到type为`ResolvableTypeTest$A<T>`，因为B定义时没有特化泛型，所以获取不到。但是可以通过C中的特化泛型来帮助我们解析。`ResolvableType.toString()`显示时才能看到完整的类型字符串。
+
+![image-20260815201324435](./imgs/image-20260815201324435.png)
+
+```java
+ @Override
+public String toString() {
+    if (isArray()) {
+        return getComponentType() + "[]";
+    }
+    if (this.resolved == null) {
+        return "?";
+    }
+    if (this.type instanceof TypeVariable) {
+        TypeVariable<?> variable = (TypeVariable<?>) this.type;
+        if (this.variableResolver == null || this.variableResolver.resolveVariable(variable) == null) {
+            // Don't bother with variable boundaries for toString()...
+            // Can cause infinite recursions in case of self-references
+            return "?";
+        }
+    }
+    StringBuilder result = new StringBuilder(this.resolved.getName());
+    if (hasGenerics()) {
+        result.append('<');
+        result.append(LettuceStrings.arrayToDelimitedString(getGenerics(), ", "));
+        result.append('>');
+    }
+    return result.toString();
+}
+```
+
+可以看到`toString`正是通过`resolved` + `generics`计算出来的。
+
+ResolvableType类中有一个resolveType方法可以帮助我们解析type属性，但是访问权限是默认的，外部无法访问。可以通过下面方案来解析出泛型变量具体运行时类型。
+
+```java
+public Type getType(ResolvableType resolvableType) {
+    Type type = resolvableType.getType();
+    if (type instanceof TypeVariable<?>) {
+        Class<?> resolved = resolvableType.resolve();
+        if (resolved == null) {
+            throw new RuntimeException("无法解析泛型");
+        }
+        if (resolvableType.hasGenerics()) {
+            type = ResolvableType.forClassWithGenerics(resolved, resolvableType.getGenerics()).getType();
+        } else {
+            type = resolved;
+        }
+    }
+    return type;
+}
+```
+
+
+
