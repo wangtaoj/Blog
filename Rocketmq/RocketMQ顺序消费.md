@@ -242,7 +242,14 @@ public void run() {
         if (MessageModel.BROADCASTING.equals(ConsumeMessageOrderlyService.this.defaultMQPushConsumerImpl.messageModel())
             || (this.processQueue.isLocked() && !this.processQueue.isLockExpired())) {
             final long beginTime = System.currentTimeMillis();
-            // 循环消费消息
+            /*
+             * 循环消费消息
+             * continueConsume = false情况
+             * 1. ProcessQueue获取消息为空
+             * 2. 消息消费时状态返回SUSPEND_CURRENT_QUEUE_A_MOMENT或者出现异常
+             *    processConsumeResult方法处理SUSPEND_CURRENT_QUEUE_A_MOMENT结果时，会把消息重新放回ProcessQueue中
+             *    然后往线程池提交一个消费任务(消息重试)
+             */
             for (boolean continueConsume = true; continueConsume; ) {
                 if (this.processQueue.isDropped()) {
                     log.warn("the message queue not be able to consume, because it's dropped. {}", this.messageQueue);
