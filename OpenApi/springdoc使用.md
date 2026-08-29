@@ -149,8 +149,10 @@ springdoc:
   # 组配置信息, 也可以使用GroupedOpenApi代码配置
   group-configs:
     - group: default
-      paths-to-match: /**
-      packages-to-scan: com.wangtao.springdoc.controller
+      paths-to-match:
+        - /**
+      packages-to-scan:
+        - com.wangtao.springboottest.web.controller
 ```
 
 
