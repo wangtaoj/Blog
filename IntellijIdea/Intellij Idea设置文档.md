@@ -31,3 +31,11 @@ IDE、Project作用域可以互相转换。
 ![image-20240817134126173](./imgs/image-20240817134126173.png)
 
 ![image-20240817134308213](./imgs/image-20240817134308213.png)
+
+### 禁用double shift快捷键(Search Everywhere)
+
+![image-20260829161801795](./imgs/image-20260829161801795.png)
+
+### 启用git commit modal弹窗
+
+![image-20260829162310241](./imgs/image-20260829162310241.png)
