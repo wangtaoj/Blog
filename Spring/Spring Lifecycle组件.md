@@ -46,7 +46,7 @@ public interface SmartLifecycle extends Lifecycle, Phased {
 SmartLifecycle和Lifecycle区别如下
 
 * 实现SmartLifecycle接口的bean，在ApplicationContext初始化完成后(所有单例bean都已初始化)，如果isAutoStartup方法返回true，则会自动调用start方法。而Lifecycle接口则需要手动调用ApplicationContext的start方法来触发。
-* SmartLifecycle接口可以控制执行顺序，它继承了Phased接口，getPhase方法返回的值越小，start()则越先调用，stop方法越晚执行。
+* SmartLifecycle接口可以控制执行顺序，它继承了Phased接口，getPhase方法返回的值越小，start()则越先调用，stop方法越晚执行。Spring内部执行时按照Phase分组执行的，**同一个Phase下的SmartLifecycle只能通过依赖关系干预执行顺序，Ordered接口无能为力。**
 * SmartLifecycle增加了一个带有回调接口的stop，这样组件可以异步停止，回调callback是spring自己传递，就是一个CountDownLatch执行countDown方法，而主线程会执行CountDownLatch的await方法，等待组件stop方法执行完毕，当然这个等待时间由spring.lifecycle.timeout-per-shutdown-phase控制的，默认是30s。该参数不是等待所有的Lifecycle，执行时会根据phase来分组，是指每一个组的Lifecycle最多执行spring.lifecycle.timeout-per-shutdown-phase这么久，超了这个时间就执行下一个组了。
 * 另外ApplicationContext执行close方法时，不论是Lifecycle还是SmartLifecycle都会执行，前提是isRunning方法返回true。此时Lifecycle的phase会给0来参与分组排序。
 
@@ -60,7 +60,7 @@ SmartLifecycle和Lifecycle区别如下
 public class SimpleLifecycle implements SmartLifecycle {
 
     /**
-     * 如果stop方法有异步线程, 则需要使用volatile修饰
+     * 使用volatile修饰
      */
     private volatile boolean running;
 
@@ -107,10 +107,20 @@ AbstractApplicationContext类
 
 close -> doClose -> lifecycleProcessor.onClose()
 
-### 应用
+### servlet容器优雅关闭
 
-tomcat容器的启动和关闭就是通过SmartLifecycle来实现的
+servlet容器的启动和关闭就是通过SmartLifecycle来实现的
 
-* WebServerStartStopLifecycle
+#### WebServerStartStopLifecycle
 
-* WebServerGracefulShutdownLifecycle(开启优雅停机属性才有作用, server.shutdown=graceful)，这样tomcat就会停止处理新的请求，会等待现有请求执行完毕。等待最大时间为spring.lifecycle.timeout-per-shutdown-phase，超过这个时间还没处理完成，WebServerStartStopLifecycle的stop方法就会执行了，会修改WebServerGracefulShutdownLifecycle循环的标记而退出。
+用于正常启动和关闭servlet容器
+
+#### WebServerGracefulShutdownLifecycle
+
+用于优雅停机，和`WebServerStartStopLifecycle`搭配使用。
+
+* 开启优雅停机属性才会将它注册到Spring容器中, `server.shutdown=graceful`
+
+* 它的phase比`WebServerStartStopLifecycle`的大，因此它的start方法会比`WebServerStartStopLifecycle`晚执行，stop方法执行顺序则先于`WebServerStartStopLifecycle`
+
+* 它最终会启动一个异步线程去关闭servlet容器的Connector，这样servlet容器就会停止处理新的请求，然后循环等待现有请求执行完毕(通过判断正在执行的请求数是否等于0)。当所有请求执行完毕后，会执行Spring传入的callback，将CountDownLatch计数减1，Spring便可以执行下一个phase下的`SmartLifecycle`，当然了如果所有请求迟迟没有结束，Spring也只会最多等待`spring.lifecycle.timeout-per-shutdown-phase`秒(其实就是调用CountDownLatch的await)，当Spring执行下一个phase下的`SmartLifecycle`时，`WebServerStartStopLifecycle`的stop方法就会执行了，同时会修改`WebServerGracefulShutdownLifecycle`循环的标记，这样子即便等待所有请求执行完成这个条件没有满足，也能终止循环，终止这个异步线程。
