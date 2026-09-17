@@ -1,13 +1,15 @@
 Spring的事务提供了一套事务同步的机制，暴露一些钩子给用户来执行自己的逻辑。基于此封装了事务钩子工具类。有时候可能我们想当前方法事务提交之后执行一些逻辑，比如发送消息到MQ中，那么可以很优雅的使用该工具类来实现这个目的，而不用将发生消息到MQ这段逻辑放到事物方法外面。
 
 ```java
-public final class TransactionUtils {
+public final class TransactionSynchronizationUtils {
 
-    private TransactionUtils() {}
+    private TransactionSynchronizationUtils() {
+        
+    }
 
     /**
      * 事务提交之后执行
-     * @param action 动作
+     * @param action 执行动作
      */
     public static void executeAfterCommit(Runnable action) {
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
@@ -22,7 +24,7 @@ public final class TransactionUtils {
 
     /**
      * 事务回滚之后执行
-     * @param action 动作
+     * @param action 执行动作
      */
     public static void executeAfterRollback(Runnable action) {
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
@@ -40,7 +42,7 @@ public final class TransactionUtils {
     /**
      * 事务完成后执行, 回滚或者提交都有可能
      * 根据status来判断
-     * @param action 动作
+     * @param action 执行动作
      */
     public static void executeAfterCompletion(Consumer<Integer> action) {
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
@@ -92,7 +94,7 @@ public class BizService {
     public void execute() {
         // doSomething
         // 事务提交后执行逻辑
-        TransactionUtils.executeAfterCommit(() -> {
+        TransactionSynchronizationUtils.executeAfterCommit(() -> {
             // 发送消息
             sendMq();
         });
