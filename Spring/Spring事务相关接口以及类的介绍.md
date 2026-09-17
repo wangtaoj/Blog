@@ -52,7 +52,7 @@ public interface TransactionStatus extends SavepointManager, Flushable {
 
 	/**
 	 * 判断此事务是不是一个新的事务，因为受传播行为影响，会参与到一个已经存在的事务
-	 * 那么结果就不是一个新事务。
+	 * 那么结果就不是一个新事务。(存在一个真实事务)
 	 */
 	boolean isNewTransaction();
 
@@ -119,7 +119,7 @@ public class DefaultTransactionStatus extends AbstractTransactionStatus {
      *  传播行为的值: PROPAGATION_NOT_SUPPORTED(因为会将外部事务挂起，以非事务方式运行)
      *  ==========================================================================
      * 判断是否存在一个新的真实事务: newTransaction == true && transaction != null
-     * 判断存在一个空事务(非事务执行方式): newTransaction == true && transaction != null
+     * 判断存在一个空事务(非事务执行方式): newTransaction == true && transaction == null
      * 判断此事务是否参与到外部事务: newTransaction == false && transaction != null
      * 判断存在一个事务(新的真实事务或者参与外部事务)：transaction != null
      */
@@ -127,14 +127,14 @@ public class DefaultTransactionStatus extends AbstractTransactionStatus {
 
     /** 
      * 值为true，事务管理器需要为当前线程绑定当前事务的属性以及TransactionSynchronization回调接口
-     * 这个值会受到AbstractPlatformTransactionManager类中定义的transactionSynchronization字段      * 影响。
+     * 这个值会受到AbstractPlatformTransactionManager类中定义的transactionSynchronization字段影响。
      * transactionSynchronization可能的值为AbstractPlatformTransactionManager类定义的
      * 三个常量，默认为SYNCHRONIZATION_ALWAYS
      * 1. SYNCHRONIZATION_ALWAYS：总是激活事务同步(无论是空事务还是真实事务)
      * 2. SYNCHRONIZATION_ON_ACTUAL_TRANSACTION: 只有真实事务才激活事务同步
      * 3. SYNCHRONIZATION_NEVER：不激活事务同步
      * 这个字段的作用:
-     * 如果为true，那么会将当前的事务属性(传播行为、隔离级别、事务名字、事务只读性、事务是否存活-用以区分      * 是空事务还是真实的事务)以及TransactionSynchronization回调接口
+     * 如果为true，那么会将当前的事务属性(传播行为、隔离级别、事务名字、事务只读性、事务是否存活-用以区分是空事务还是真实的事务)以及TransactionSynchronization回调接口
      * ==========================================================================
      * 在DataSourceTransactionManager事务管理器中并且transactionSynchronization为默认值时:
      * newSynchronization=true的情况
