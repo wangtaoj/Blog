@@ -183,7 +183,10 @@ pom文件配置
             <goal>bindPhase</goal>
           </goals>
           <configuration>
-            <!-- 指定参数值，所有的参数在configuration标签下面 -->
+            <!--
+             指定参数值，所有的参数在configuration标签下面
+             若通过${xx}变量形式传递时, 变量未定义时接收的参数值为null
+            -->
             <greeting>hello maven plugin</greeting>
           </configuration>
         </execution>
