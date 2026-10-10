@@ -32,7 +32,7 @@ public interface PropertyResolver {
      * 根据属性名获取对应的属性值
      * 1.属性值含有占位符且属性值为字符串, 并且占位符中的key存在, 会替换掉
      * 2.会自动进行类型转换，比如属性值为整形, 则会自动转成字符串
-     * 3.占位符替换是通过调用resolvePlaceholders或者resolveRequiredPlaceholders来实现的(使用若ignoreUnresolvableNestedPlaceholders参数控制)
+     * 3.占位符替换是通过调用resolvePlaceholders或者resolveRequiredPlaceholders来实现的(使用ignoreUnresolvableNestedPlaceholders参数控制)
      */
     @Nullable
     String getProperty(String key);
