@@ -29,7 +29,10 @@ public interface PropertyResolver {
 
    
     /**
-     * 根据属性名获取对应的属性值, 如果属性值含有占位符且属性值为字符串, 并且占位符中的key存在, 会替换掉, 最后还会进行类型转换
+     * 根据属性名获取对应的属性值
+     * 1.属性值含有占位符且属性值为字符串, 并且占位符中的key存在, 会替换掉
+     * 2.会自动进行类型转换，比如属性值为整形, 则会自动转成字符串
+     * 3.占位符替换是通过调用resolvePlaceholders或者resolveRequiredPlaceholders来实现的(使用若ignoreUnresolvableNestedPlaceholders参数控制)
      */
     @Nullable
     String getProperty(String key);
@@ -89,6 +92,7 @@ public class PropertyResolverTest {
         map.put("age", "20");
         map.put("prefix", "user");
         map.put("name", "${prefix}-1");
+        map.put("unresolvedName", "${prefix1}-1");
         MutablePropertySources propertySources = new MutablePropertySources();
         PropertySource<?> propertySource = new MapPropertySource("mapSource", map);
         propertySources.addLast(propertySource);
@@ -101,14 +105,32 @@ public class PropertyResolverTest {
         Integer age = propertyResolver.getProperty("age", Integer.class);
         Assert.assertEquals(Integer.valueOf(20), age);
 
-        // 自动替换属性值中的占位符
+        /*
+         * 自动替换属性值中的占位符
+         * ignoreUnresolvableNestedPlaceholders参数默认值为false
+         * 若ignoreUnresolvableNestedPlaceholders=false，会调用resolvePlaceholders方法来替换占位符
+         * 若ignoreUnresolvableNestedPlaceholders=true，会调用resolveRequiredPlaceholders方法来替换占位符
+         */
         String name = propertyResolver.getProperty("name");
-        Assert.assertEquals("user-1", name);
+        assertEquals("user-1", name);
+        
+        /*
+         * unresolvedName对应的属性值为{prefix1}-1
+         * propertyResolver创建时没有修改ignoreUnresolvableNestedPlaceholders参数值，故使用resolveRequiredPlaceholders来替换占位符
+         * 因prefix1变量不存在无法替换，所以抛IllegalArgumentException异常
+         */
+        assertThrows(IllegalArgumentException.class, () -> propertyResolver.getProperty("unresolvedName"));
+
+        // getRequiredProperty方法获取属性值为null时没有指定默认值则抛出IllegalStateException
+        assertThrows(IllegalStateException.class, () -> propertyResolver.getRequiredProperty("name1"));
 
         // 手动替换占位符
         String text = "${prefix}-1";
         String res = propertyResolver.resolvePlaceholders(text);
-        Assert.assertEquals("user-1", res);
+        assertEquals("user-1", res);
+
+        // resolveRequiredPlaceholders无法替换占位符时抛出IllegalArgumentException
+        assertThrows(IllegalArgumentException.class, () -> propertyResolver.resolveRequiredPlaceholders("${prefix1}-1"));
     }
 }
 ```
