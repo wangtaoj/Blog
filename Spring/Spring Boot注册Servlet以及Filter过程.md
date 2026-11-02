@@ -81,6 +81,34 @@ public class FirstFilter implements Filter {
 | `@WebFilter`+ `@ServletComponentScan` | yes      | no       |
 | `@Component`                          | no       | yes      |
 
+### Filter、Servlet作为Spring Bean时如何不注册到Servlet容器中
+
+有时候开发了一个Filter，又想使用到依赖注入的便捷性，但是不想自动注册到Servlet容器中，典型的场景就是添加到Spring Security过滤器链中。此时若不加干涉，过滤器就会被执行两次。
+
+```java
+@Component
+@Order(1)
+public class FirstFilter implements Filter {
+    @Override
+    public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain) throws IOException, ServletException {
+        System.out.println("=============FirstFilter===============");
+        chain.doFilter(request, response);
+    }
+}
+
+public class AppConfig {
+    @Bean
+    public FilterRegistrationBean<FirstFilter> registration(FirstFilter filter) {
+        FilterRegistrationBean<FirstFilter> registration = new FilterRegistrationBean<>(filter);
+        // 禁用自动注册到 Servlet 容器
+        registration.setEnabled(false);
+        return registration;
+    }
+}
+```
+
+Spring Boot在注册`Servlet`、`Filter`到`Servlet`容器时，优先使用`FilterRegistrationBean`配置，对于同一个实例，不会再把`FirstFilter`再转换成`FilterRegistrationBean`。实际注册时还会判断`enabled`属性，这样子`FirstFilter`就是一个普通的Spring Bean了。然后再在Spring Security配置中将其加入到Spring Security过滤器链中。
+
 ### 注册原理
 
 首先明确一点，无论是`@WebFilter`还是`@Component`方式注册，Spring Boot最终的处理形式还是会把它们处理成`FilterRegistrationBean`(对于`Filter`而言，`Servlet`则是`ServletRegistrationBean`)
