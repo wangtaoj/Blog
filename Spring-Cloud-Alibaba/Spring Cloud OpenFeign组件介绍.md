@@ -318,6 +318,8 @@ while (true) {
 
 Spring Cloud OpenFeign 通过 Spring Cloud CircuitBreaker 抽象将远程调用包进断路器执行。熔断能力由 CircuitBreaker 实现负责；OpenFeign 的集成层负责把 Feign 方法调用交给对应的断路器，并把降级逻辑接入代理。
 
+Spring Cloud CircuitBreaker 的具体实现（例如 Resilience4j）负责熔断状态、窗口和阈值等策略。实现侧可以通过配置属性或 `Customizer` 定制断路器。熔断和重试解决的问题不同：重试用于处理可能短暂恢复的失败，熔断用于阻止持续失败的下游继续消耗本地资源。配置它们时需要结合超时、并发量和服务恢复策略。
+
 #### 启用 CircuitBreaker 集成
 
 需要同时满足两个条件：classpath 中有 Spring Cloud CircuitBreaker API 和具体实现；并将 `spring.cloud.openfeign.circuitbreaker.enabled` 设为 `true`。例如同步应用采用 Resilience4j 时，可以使用 `spring-cloud-starter-circuitbreaker-resilience4j`，版本由 Spring Cloud BOM 管理。该 starter 为同步应用提供 CircuitBreaker 实现。
@@ -425,9 +427,11 @@ class UserClientFallback implements UserClient {
 
 `fallbackFactory` 的 `create(Throwable cause)` 可以获取导致回退的异常，适合记录原因或对不同失败作不同处理。两种方式都要求返回值符合接口语义；避免把服务不可用伪装成正常业务成功。
 
-Spring Cloud CircuitBreaker 的具体实现（例如 Resilience4j）负责熔断状态、窗口和阈值等策略。实现侧可以通过配置属性或 `Customizer` 定制断路器。熔断和重试解决的问题不同：重试用于处理可能短暂恢复的失败，熔断用于阻止持续失败的下游继续消耗本地资源。配置它们时需要结合超时、并发量和服务恢复策略。
+#### 单次异常与熔断阈值的关系
 
-源码可参考 [FeignCircuitBreaker](https://raw.githubusercontent.com/spring-cloud/spring-cloud-openfeign/main/spring-cloud-openfeign-core/src/main/java/org/springframework/cloud/openfeign/FeignCircuitBreaker.java)、[FeignCircuitBreakerTargeter](https://raw.githubusercontent.com/spring-cloud/spring-cloud-openfeign/main/spring-cloud-openfeign-core/src/main/java/org/springframework/cloud/openfeign/FeignCircuitBreakerTargeter.java) 和 [FeignCircuitBreakerInvocationHandler](https://raw.githubusercontent.com/spring-cloud/spring-cloud-openfeign/main/spring-cloud-openfeign-core/src/main/java/org/springframework/cloud/openfeign/FeignCircuitBreakerInvocationHandler.java)。
+fallback 的触发条件和熔断阈值是两件事。配置了 `fallback` 或 `fallbackFactory` 后，只要本次 Feign 方法执行抛出异常，集成层就会用 fallback 处理这一次调用；不需要先累计到失败阈值，也不需要断路器已经进入 OPEN 状态。所以下游返回 HTTP 500 时，默认 `ErrorDecoder` 会将非 2xx 响应转换为异常，本次调用通常立即返回 fallback 的结果。
+
+这次异常仍会交给 CircuitBreaker 实现统计。若失败数或失败率还没达到阈值，断路器可以保持 CLOSED，下一次调用仍会访问下游；达到阈值后，后续调用才会被断路器拒绝，并在配置了 fallback 时走相同的降级路径。若没有配置 fallback，HTTP 500 异常会传播给调用方，但 CircuitBreaker 仍可按实现策略记录这次失败。自定义 `ErrorDecoder`、异常忽略规则和熔断实现的配置会影响异常类型及统计结果；fallback 自身再次抛出异常时，该异常也会继续传播。
 
 ### 常见理解误区
 
